@@ -4,6 +4,8 @@ Trouvez les stations-service les moins chères autour de vous. Carte interactive
 
 **Démo en ligne : https://fuelnow.squale.ovh/**
 
+> ⚠️ Ce projet a été intégralement **vibecodé** — généré via des sessions de pair-programming avec un assistant IA. Aucune ligne de code n'a été tapée à la main. Le code n'a pas été relu ni audité manuellement.
+
 ## Stack
 
 | Couche | Techno |
