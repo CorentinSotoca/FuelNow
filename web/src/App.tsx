@@ -115,7 +115,6 @@ function App() {
               data={data}
               loading={loading}
               error={error}
-              searchPoint={point}
               selectedStationId={selectedStationId}
               radiusM={radiusM}
               sort={sort}

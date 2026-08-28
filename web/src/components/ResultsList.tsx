@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { LatLon, StationSearchItem } from "../types";
+import type { StationSearchItem } from "../types";
 import type { Quartiles } from "../utils";
 import { priceQuartiles } from "../utils";
 import type { SearchError } from "../hooks/useDebouncedSearch";
@@ -9,7 +9,6 @@ interface ResultsListProps {
   data: { items: StationSearchItem[]; total: number; stale: boolean; data_updated_at: string | null } | null;
   loading: boolean;
   error: SearchError | null;
-  searchPoint: LatLon;
   selectedStationId: number | null;
   radiusM: number;
   sort: "price" | "distance";
@@ -24,7 +23,6 @@ export function ResultsList({
   data,
   loading,
   error,
-  searchPoint,
   selectedStationId,
   radiusM,
   sort,
@@ -142,7 +140,6 @@ export function ResultsList({
               rank={i + 1}
               quartiles={quartiles}
               selected={station.id === selectedStationId}
-              searchPoint={searchPoint}
               onSelect={onSelectStation}
               onHover={onHoverStation}
             />

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { LatLon, StationSearchItem } from "../types";
+import type { StationSearchItem } from "../types";
 import type { Quartiles } from "../utils";
 import { formatDelta, formatDistance, formatHoursAgo, formatPrice, quartileColor } from "../utils";
 
@@ -8,7 +8,6 @@ interface StationCardProps {
   rank: number;
   quartiles: Quartiles | null;
   selected: boolean;
-  searchPoint: LatLon;
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
 }
@@ -18,14 +17,15 @@ function StationCardInner({
   rank,
   quartiles,
   selected,
-  searchPoint,
   onSelect,
   onHover,
 }: StationCardProps) {
   const color = quartileColor(station.price_eur, quartiles);
   const isCheapest = station.cheapest_delta_eur === null || station.cheapest_delta_eur === 0;
   const isAutoroute = station.road_type === "A";
-  const itineraryUrl = `https://www.openstreetmap.org/directions?from=${searchPoint.lat},${searchPoint.lon}&to=${station.lat},${station.lon}`;
+  const labelParts = [station.address, [station.postal_code, station.city].filter(Boolean).join(" ")].filter(Boolean);
+  const label = encodeURIComponent(labelParts.join(", "));
+  const itineraryUrl = `geo:${station.lat},${station.lon}?q=${station.lat},${station.lon}${label ? `(${label})` : ""}`;
 
   return (
     <div
@@ -71,8 +71,6 @@ function StationCardInner({
           )}
           <a
             href={itineraryUrl}
-            target="_blank"
-            rel="noopener noreferrer"
             className="itinerary-link"
             onClick={(e) => e.stopPropagation()}
           >

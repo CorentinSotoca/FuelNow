@@ -112,7 +112,10 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL`, `SOURC
 
 ### Frontend
 
-- **maplibre-gl v6 + Vite** : `optimizeDeps.exclude: ['maplibre-gl']` dans `vite.config.ts` pour fix le worker URL.
+- **maplibre-gl v6 + Vite** : `optimizeDeps.exclude: ['maplibre-gl']` dans `vite.config.ts` pour fix le worker URL en dev. **En prod (build)**, il faut en plus appeler `setWorkerUrl()` avec un import `maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url` (voir `MapView.tsx`) — sans ça, le worker n'est pas extrait par Vite, la source GeoJSON du cercle ne s'affiche jamais (404 silencieux sur `maplibre-gl-worker.mjs`).
+- **Cercle de rayon** : source GeoJSON `search-radius` + 2 layers (`fill` + `line` pointillés) alimentées par `circleGeoJSON()` dans `geo.ts`. Se met à jour via `useEffect` sur `[point, radiusM]`.
+- **Bouton itinéraire** : utilise un URI `geo:lat,lon?q=lat,lon(Label)` (RFC 5870) — s'ouvre dans l'app de maps par défaut sur mobile. Pas de `target="_blank"`.
+- **Popup station** : affiche prix, adresse, code postal + ville, distance.
 - **Marqueurs HTML MapLibre** : ne **pas** mettre `transform: translate(-50%,-50%)` dans le style de l'élément — MapLibre gère lui-même le positionnement. Ne **pas** utiliser `replaceWith` pour mettre à jour un marker — appliquer les styles in-place sur `marker.getElement()` via `applyStationElStyle`.
 - **TypeScript** : `erasableSyntaxOnly: false` dans `tsconfig.app.json` (bloque les classes avec param properties comme ApiError).
 - Classes CSS popup en maplibre-gl v6 : préfixées `maplibregl-` (pas `maplibre-`).

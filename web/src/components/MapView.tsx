@@ -3,6 +3,7 @@ import {
   Map as MapLibreMap,
   Marker,
   Popup,
+  setWorkerUrl,
   type GeoJSONSource,
   type StyleSpecification,
 } from "maplibre-gl";
@@ -10,6 +11,9 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { LatLon, StationSearchItem } from "../types";
 import { circleGeoJSON } from "../geo";
 import { formatDistance, formatPrice, priceQuartiles, quartileColor } from "../utils";
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+
+setWorkerUrl(workerUrl);
 
 const FRANCE_CENTER: LatLon = { lat: 46.6, lon: 2.5 };
 const FRANCE_ZOOM = 5.3;
@@ -113,13 +117,13 @@ export function MapView({
         id: `${CIRCLE_SOURCE_ID}-fill`,
         type: "fill",
         source: CIRCLE_SOURCE_ID,
-        paint: { "fill-color": "#2563eb", "fill-opacity": 0.15 },
+        paint: { "fill-color": "#2563eb", "fill-opacity": 0.18 },
       });
       map.addLayer({
         id: `${CIRCLE_SOURCE_ID}-line`,
         type: "line",
         source: CIRCLE_SOURCE_ID,
-        paint: { "line-color": "#2563eb", "line-width": 2 },
+        paint: { "line-color": "#2563eb", "line-width": 3, "line-dasharray": [3, 2] },
       });
 
       styleReadyRef.current = true;
@@ -274,7 +278,7 @@ export function MapView({
       .setHTML(`
         <div class="station-popup">
           <div class="station-popup-price">${formatPrice(station.price_eur)}</div>
-          ${station.address ? `<div class="station-popup-addr">${station.address}</div>` : ""}
+          ${station.address || station.postal_code || station.city ? `<div class="station-popup-addr">${[station.address, [station.postal_code, station.city].filter(Boolean).join(" ")].filter(Boolean).join("<br>")}</div>` : ""}
           <div class="station-popup-dist">${formatDistance(station.distance_m)}</div>
         </div>`)
       .addTo(map);
