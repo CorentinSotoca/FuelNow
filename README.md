@@ -157,7 +157,7 @@ docker compose -f docker-compose.prod.yml run --rm etl python -m etl.be_run
 ```
 
 - **ETL** : fetch gzip JSON → validation Pydantic → dépivot 6 carburants → garde-fou (80% du dernier run) → staging tables → `TRUNCATE`+`INSERT` atomique. Un second ETL récupère les prix maximum officiels belges (Statbel) via UPSERT.
-- **API** : `ST_DWithin` + `ST_Distance` sur `geography` (index GiST). Rate limit 60/min/IP, ETag + Cache-Control 900s.
+- **API** : `ST_DWithin` + `ST_DDistance` sur `geography` (index GiST). Rate limit 60/min/IP sur tous les endpoints (IP réelle via `X-Real-IP`), ETag + Cache-Control 900s. Engine SQLAlchemy avec `pool_pre_ping` + `pool_recycle=3600`.
 - **Frontend** : debounce 400ms, marqueurs HTML colorés par quartile de prix avec prix affiché directement sur la carte, liaison liste↔carte, popup, itinéraire via URI `geo:` (app de maps par défaut). Responsive mobile : bottom sheet 3 positions, bouton géoloc.
 - **Belgique** : pas d'open data par station en Belgique. À proximité de la frontière (~20 km), un panneau affiche les prix maximum réglementés (Statbel) à côté des stations françaises frontalières (affichage hybride). La détection utilise un polygone qui suit la frontière, pas une bbox rectangulaire (pour exclure Arras, Cambrai, etc.).
 
@@ -179,13 +179,13 @@ docker compose -f docker-compose.prod.yml run --rm etl python -m etl.be_run
 | `POSTGRES_USER` | `fuelnow` | Utilisateur DB |
 | `POSTGRES_PASSWORD` | `changeme` | Mot de passe DB |
 | `DATABASE_URL` | — | URL SQLAlchemy async (obligatoire, à construire manuellement) |
-| `SOURCE_DATASET_URL` | — | URL du dataset ODS (export JSON gzip) |
+| `SOURCE_DATASET_URL` | URL par défaut | URL du dataset ODS (export JSON gzip) |
 | `ETL_CRON` | `0 6 * * *` | Schedule cron ETL France (format 5 champs, supercronic ajoute les secondes) |
 | `ETL_BE_CRON` | `0 7 * * *` | Schedule cron ETL Belgique |
 | `STATBEL_API_URL` | URL par défaut | URL de l'API Statbel pour les prix maximum belges |
 | `ETL_MIN_ROWS` | `5000` | Seuil minimum absolu de stations |
 | `ETL_MIN_RATIO` | `0.8` | Ratio minimum vs dernier run réussi |
-| `RATE_LIMIT_PER_MIN` | `60` | Requêtes/min/IP sur `/search` |
+| `RATE_LIMIT_PER_MIN` | `60` | Requêtes/min/IP sur tous les endpoints |
 | `SEARCH_RADIUS_MAX_M` | `30000` | Rayon max (mètres) |
 | `CACHE_TTL_S` | `900` | TTL Cache-Control sur `/search` |
 | `LOG_LEVEL` | `INFO` | Niveau de log |

@@ -30,16 +30,18 @@ api/                  FastAPI + ETL (même image Python)
     be_adapter.py     StatbelAdapter (fetch + parse prix max BE)
     models.py         StationRecord, StationPriceRecord, Fuel, Outage
     load.py           staging tables + TRUNCATE/INSERT atomique
+    runs.py           Shared helpers (create_run, update_run, send_alert, cleanup_orphaned_runs)
     run.py            Orchestrateur FR + etl_runs (source='fr')
     be_run.py         Orchestrateur BE + etl_runs (source='be')
     entrypoint.sh     supercronic (-no-reap, génère crontab au runtime, 2 entries FR+BE)
-  tests/              Tests (13 ETL parse + 11 API search + 10 BE adapter + 5 BE API)
+  tests/              Tests (13 ETL parse + 11 API search + 10 BE adapter + 5 BE API + 7 ETL load)
+                      conftest.py (fixtures partagées: db_session, cleanup helpers)
   alembic/            Migrations
 web/                  SPA React + Vite
   src/
     App.tsx           Layout (sidebar + map + bottom sheet mobile)
     App.css           Tous les styles (incl. responsive @media 768px)
-    components/       MapView, FuelSelect, RadiusControl, ResultsList, StationCard, BeMaxPricePanel
+    components/       MapView, FuelSelect, RadiusControl, ResultsList, StationCard, BeMaxPricePanel, ErrorBoundary
     hooks/            useDebouncedSearch (400ms, race-condition safe, détection zone BE)
     api.ts            Client API (ApiError, fetchFuels, searchStations, fetchBePrices)
     types.ts          Types TypeScript
@@ -48,6 +50,8 @@ web/                  SPA React + Vite
 docs/ARCHITECTURE.md  Architecture technique détaillée
 docker-compose.yml    Dev (db, api, etl)
 docker-compose.prod.yml  Prod (db, api, etl, web)
+deploy.sh             Script de déploiement (git pull → build → migrations → restart)
+.github/workflows/ci.yml  CI GitHub Actions (lint, tests, frontend, security, docker-build)
 .env.example          Template variables d'environnement
 ```
 
@@ -63,7 +67,7 @@ docker compose up -d api
 cd web && npm install && npm run dev   # → localhost:5173
 
 # Tests
-docker compose run --rm api pytest tests/ -q   # 39 tests
+docker compose run --rm api pytest tests/ -q   # 46 tests
 
 # Prod
 docker compose -f docker-compose.prod.yml up -d --build db
@@ -101,7 +105,7 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 - Stations sans prix exclues par défaut ; ruptures temporaires et définitives exclues.
 - Remplacement complet des données à chaque run ETL, en une transaction.
 - 6 carburants : gazole, sp95, sp98, e10, e85, gplc.
-- Prix bornés [0.5, 5.0] € ; geom hors bbox France rejeté.
+- Prix bornés [0.5, 5.0] € ; geom hors bbox France rejeté (BBOX très large : -65/-25/20/55 pour inclure DROM et frontières).
 - ENUMs créés manuellement dans la migration (postgresql.ENUM avec `create_type=False`).
 - Belgique : pas d'open data par station, seuls les prix maximum réglementés (Statbel) sont affichés.
 - `etl_runs.source` distingue les runs FR (`source='fr'`) des runs BE (`source='be'`).
@@ -114,9 +118,12 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 ### ETL
 
 - **Jamais de SQL par interpolation de chaînes** (problèmes de quoting JSON) — toujours passer par des paramètres liés.
-- **Jamais `func.now()` dans des params `executemany`** — asyncpg attend une vraie valeur Python → utiliser `datetime.now(timezone.utc)`.
+- **Jamais `func.now()` dans des params `executemany`** — asyncpg attend une vraie valeur Python → utiliser `datetime.now(UTC)`.
 - Dataset source : utiliser `geom {lon, lat}`, **PAS** `latitude`/`longitude` (entiers ×100000).
 - Modèle source « wide » (1 colonne par carburant) → l'ETL le dépivote en table longue `station_prices`.
+- **structlog** : les scripts ETL (`run.py`, `be_run.py`) utilisent structlog pour le logging JSON structuré (pas le module logging standard).
+- **Retry réseau** : `OdsJsonAdapter.fetch` et `StatbelAdapter.fetch` retentent 3 fois sur `httpx.TransportError` avec backoff exponentiel.
+- **Runs orphelins** : `cleanup_orphaned_runs()` est appelé au démarrage de chaque ETL pour marquer `failed` les runs restés `running` (crash).
 
 ### API
 
@@ -124,6 +131,9 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 - `order_by` choisi en Python selon `sort` (valeur restreinte par `Literal`, donc pas d'injection) puis formaté dans le template SQL.
 - **Piège pytest-asyncio** : avec un engine SQLAlchemy async créé au niveau module, il faut `asyncio_default_fixture_loop_scope = "session"` et `asyncio_default_test_loop_scope = "session"` dans `pyproject.toml`, sinon erreur asyncpg « another operation in progress ».
 - Tests API : fixtures sur IDs sentinelles 900000001-5 (loin des vraies données, nettoyées après chaque test).
+- **Rate limit** : `slowapi` sur **tous** les endpoints (`/health`, `/search`, `/stations/{id}`, `/be/prices`), pas seulement `/search`.
+- **IP réelle** : le rate limiter lit `X-Real-IP` (positionné par nginx), pas le premier élément de `X-Forwarded-For` (spoofable).
+- **pool_pre_ping** : l'engine SQLAlchemy a `pool_pre_ping=True` + `pool_recycle=3600` pour détecter les connexions mortes.
 
 ### Frontend
 

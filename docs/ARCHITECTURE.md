@@ -94,16 +94,16 @@ Purge : `DELETE FROM etl_runs WHERE started_at < now() - interval '30 days'` en 
 
 ## 5. Flux ingestion (atomique)
 
-1. **Fetch** : `GET .../exports/json`, en-têtes `If-None-Match` / `If-Modified-Since` persistés dans `etl_runs` (ou table `etl_state`). HTTP 304 → run marqué `skipped`, arrêt. Timeout 120 s, 3 retries backoff exponentiel. Décompression gzip.
+1. **Fetch** : `GET .../exports/json`. Timeout 120 s, 3 retries sur `httpx.TransportError` avec backoff exponentiel. Décompression gzip.
 2. **Parse** : adaptateur `SourceAdapter` (interface `iter_stations() -> Iterator[StationRecord]`) → une implémentation `OdsJsonAdapter`, une seconde possible `OdsCsvAdapter` en secours si l'export JSON change. Validation Pydantic ligne par ligne ; lignes invalides comptées, pas bloquantes.
-3. **Normalisation** : dépivot des 6 carburants ; `price_eur` rejeté si hors [0.5, 5.0] ; `geom` rejeté si hors bbox France + DOM ; dédoublonnage sur `id`.
-4. **Garde-fou qualité** : si `count(stations) < 80 %` du dernier run réussi, ou < 5000 → run `failed`, **aucune écriture**, données précédentes conservées.
+3. **Normalisation** : dépivot des 6 carburants ; `price_eur` rejeté si hors [0.5, 5.0] ; `geom` rejeté si hors bbox (-65/-25/20/55, inclut DROM et frontières) ; dédoublonnage sur `id`.
+4. **Garde-fou qualité** : si `count(stations) < 80 %` du dernier run réussi (filtré par `source='fr'`), ou < 5000 → run `failed`, **aucune écriture**, données précédentes conservées.
 5. **Chargement** : tables `stations_stg` / `station_prices_stg` (`TRUNCATE` + `COPY`), puis une seule transaction :
    `BEGIN; TRUNCATE station_prices, stations; INSERT INTO stations SELECT * FROM stations_stg; INSERT INTO station_prices SELECT * FROM station_prices_stg; COMMIT;`
    → jamais d'état partiel visible. (Le swap par `ALTER TABLE ... RENAME` est évité : casse les FK et les vues ; inutile à cette volumétrie.)
-6. **Post** : `ANALYZE`, purge `etl_runs`, log JSON structuré, mise à jour `/health` de l'API via lecture de `etl_runs`.
+6. **Post** : `ANALYZE`, purge `etl_runs`, log JSON structuré via **structlog**, mise à jour `/health` de l'API via lecture de `etl_runs`. Nettoyage des runs orphelins (`cleanup_orphaned_runs()`) au démarrage de chaque ETL.
 
-Observabilité : logs JSON stdout (récupérés par `docker logs` / loki), `GET /health` renvoyant `last_success_at` + `age_hours`, et `stale=true` si > 26 h. Alerting minimal optionnel : appel webhook (Discord/ntfy) si run `failed`.
+Observabilité : logs JSON stdout via structlog (récupérés par `docker logs` / loki), `GET /health` renvoyant `last_success_at` + `age_hours`, et `stale=true` si > 26 h. Alerting minimal optionnel : appel webhook (Discord/ntfy) si run `failed`.
 
 ## 6. API
 
@@ -138,7 +138,7 @@ Enveloppe : `{ items, total, page, page_size, data_updated_at, stale }`.
 
 Règles transverses :
 - Validation stricte Pydantic ; 422 sur param hors bornes, 503 si base jamais peuplée.
-- Rate limit `slowapi` sur tous les endpoints : 60 req/min/IP (clé = IP réelle via `X-Forwarded-For` du proxy).
+- Rate limit `slowapi` sur **tous** les endpoints : 60 req/min/IP (clé = IP réelle via `X-Real-IP` positionné par nginx, **pas** `X-Forwarded-For` qui est spoofable).
 - En-têtes de sécurité (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy) ajoutées par nginx.
 - CORS : désactivé en prod (même origine via proxy) ; `localhost:5173` autorisé en dev.
 - Cache : `Cache-Control: public, max-age=900` + `ETag` sur `/search` ; optionnellement cache applicatif in-process (LRU 500 entrées, TTL 15 min) clé = `(lat,lon arrondis 3 déc., radius, fuel, sort, page)`. Redis non nécessaire à cette échelle.
@@ -218,12 +218,15 @@ VPS cible : **2 vCPU / 2 Go RAM / 20 Go SSD** suffisent largement (Postgres ~512
 ## 9. Qualité
 
 - **Tests ETL (unitaires)** : fixtures JSON réelles tronquées (~20 stations, dont prix manquants, rupture définitive, `geom` aberrant) → assertions sur dépivot, rejets, garde-fou seuil.
+- **Tests ETL (intégration)** : `test_etl_load.py` (7 tests) — guardrail, `get_last_run_stats` filtre par `source='fr'`, load atomique (TRUNCATE + INSERT).
 - **Tests API (intégration)** : `pytest` avec un service PostgreSQL GitHub Actions (ou une DB manuelle en local) ; jeu de 5 stations connues → vérifier rayon, tri prix, tie-break distance, exclusion rupture, bornes 422, pagination.
+- **Tests BE (adapter + API)** : 10 tests adapter + 5 tests API pour les prix maximum belges.
+- **Total** : 46 tests (13 ETL parse + 11 API search + 10 BE adapter + 5 BE API + 7 ETL load).
 - **Smoke test post-déploiement** : `/health` non stale + `/api/stations/search?lat=48.85&lon=2.35&radius_m=3000&fuel=gazole` renvoie ≥ 1 item avec prix croissants.
 - **Frontend** : tests frontend non implémentés en v1.
 - **Migrations** : Alembic, `postgis` créé dans la première révision ; migrations idempotentes appliquées à l'entrypoint api.
 - **Secrets** : uniquement variables d'env / `.env` à `chmod 600` sur le VPS ; aucun secret dans l'image ; pas de secret réel dans le repo.
-- **CI** : GitHub Actions — jobs `backend-lint` (ruff), `backend-tests` (pytest avec Postgres), `frontend-check` (tsc + build), `security-scan` (pip-audit + npm audit), `docker-build`. Déploiement manuel via `deploy.sh`.
+- **CI** : GitHub Actions — jobs `backend-lint` (ruff), `backend-tests` (pytest avec Postgres), `frontend-check` (tsc + build), `security-scan` (pip-audit + npm audit), `docker-build`. Déploiement manuel via `deploy.sh` (git pull → build → migrations → restart).
 
 ## 10. Risques & mitigations
 
@@ -245,91 +248,7 @@ VPS cible : **2 vCPU / 2 Go RAM / 20 Go SSD** suffisent largement (Postgres ~512
 - Alertes utilisateur par email/push sur seuil de prix (nécessite comptes → Redis/queue).
 - Scalabilité : réplica lecture + Redis pour le cache si trafic > quelques req/s ; sinon aucun changement requis.
 
-## 12. Plan d'exécution par étapes
-
-Règle absolue : **une étape = un commit + une mise à jour de `PROGRESS.md`**. Ne jamais démarrer l'étape N+1 avant que l'étape N soit vérifiée et cochée.
-
-| # | Étape | Livrable | Vérification (commande) |
-|---|---|---|---|
-| 0 | Bootstrap repo | `git init`, arbo `api/ web/ docs/`, `.gitignore`, `.env.example`, `PROGRESS.md` | `ls` + `git log --oneline` |
-| 1 | Docker db + compose squelette | `docker-compose.yml` avec `db` seul, volume `pgdata` | `docker compose up -d db && docker compose exec db psql -U $POSTGRES_USER -c "select postgis_version()"` |
-| 2 | Schéma DB + migrations | Alembic rév. 1 (extension postgis, ENUMs, `stations`, `station_prices`, `etl_runs`, index GiST) | `alembic upgrade head` puis `\d+ stations` montre l'index GiST |
-| 3 | ETL fetch + parse | `api/etl/` : `OdsJsonAdapter`, modèles Pydantic, dépivot des 6 carburants | `pytest api/tests/test_etl_parse.py` sur fixture ~20 stations |
-| 4 | ETL chargement atomique | staging + `TRUNCATE`+`INSERT` en une transaction, garde-fou `ETL_MIN_ROWS`/80 %, `etl_runs` | `docker compose run --rm etl python -m etl.run` → `select count(*) from stations` ≈ 9800 |
-| 5 | API search | FastAPI `/health`, `/api/fuels`, `/api/stations/search` (rayon, tri, pagination, 422) | `curl "localhost:8000/api/stations/search?lat=48.85&lon=2.35&radius_m=3000&fuel=gazole"` → prix croissants |
-| 6 | Durcissement API | rate limit, ETag/Cache-Control, flag `stale`, logs JSON | `pytest api/tests/test_api_search.py` (bornes, tri, exclusion rupture) |
-| 7 | Frontend carte | Vite + React + MapLibre : carte, point cliquable, cercle rayon, select carburant | `npm run dev` → carte OSM affichée, cercle réactif au slider |
-| 8 | Frontend résultats | `ResultsList`, liaison liste↔marqueurs, états vide/erreur/`stale` | recherche Paris gazole → liste triée cohérente avec `curl` |
-| 9 | Prod compose | services `api`/`etl`/`web`/`db`, healthchecks, réseau `backend`, cron 06:00 | `docker compose up -d --build` puis `curl -f http://localhost:8080/health` |
-| 10 | Finitions | README déploiement, smoke test scripté, purge `etl_runs`, alerte webhook optionnelle | `./scripts/smoke.sh` vert |
-
-Ordre imposé par les dépendances : 0 → 1 → 2 → 3 → 4 → 5 → 6, et 7 → 8 peuvent démarrer dès l'étape 5 terminée (API contractuelle disponible). 9 exige 6 et 8.
-
-## 13. Suivi d'avancement (`PROGRESS.md`)
-
-Créer `PROGRESS.md` à la racine **dès l'étape 0** et le mettre à jour **à la fin de chaque étape**. C'est le point d'entrée unique pour reprendre le travail : il doit être auto-suffisant pour un agent qui n'a aucun contexte de conversation.
-
-Contraintes de rédaction :
-- Toujours en français, < 120 lignes, réécrit et non empilé indéfiniment (garder au maximum les 3 dernières entrées de journal détaillées).
-- Toujours indiquer : l'étape courante, l'étape suivante, **la commande exacte** pour vérifier l'état, et les décisions déjà figées à ne pas rediscuter.
-- Ne jamais y stocker de secret (valeurs de `.env`).
-
-Gabarit :
-
-```markdown
-# PROGRESS — FuelNow
-
-## Où en est-on
-- Étape courante : 4/10 — ETL chargement atomique
-- Statut : en cours (staging OK, transaction de swap à écrire)
-- Dernière vérif réussie : `pytest api/tests/test_etl_parse.py` (20 passed)
-
-## À faire maintenant (prochaine action concrète)
-1. Écrire `api/etl/load.py` : TRUNCATE + INSERT dans une seule transaction.
-2. Vérifier : `docker compose run --rm etl python -m etl.run`
-3. Attendu : `select count(*) from stations` ≈ 9800, ligne `status=success` dans `etl_runs`.
-
-## Contexte minimal indispensable
-- Doc d'architecture : `docs/ARCHITECTURE.md` (à lire avant toute décision).
-- Source données : dataset ODS `prix-des-carburants-en-france-flux-instantane-v2`
-  sur data.economie.gouv.fr, export JSON **gzip**, modèle wide (1 col/carburant),
-  ignorer `latitude`/`longitude` (entiers x100000) → utiliser `geom`.
-- Stack figée : PostgreSQL+PostGIS / FastAPI async / React+Vite+MapLibre / Docker Compose.
-
-## Décisions figées (ne pas rediscuter)
-- Pas d'historique de prix en v1.
-- Stations sans prix exclues par défaut ; ruptures temporaires et définitives exclues.
-- Remplacement complet des données à chaque run, en une transaction.
-
-## Commandes utiles
-- `docker compose up -d db && docker compose exec api alembic upgrade head`
-- `docker compose run --rm etl python -m etl.run`
-- `pytest api/tests -q`
-
-## Étapes
-- [x] 0 Bootstrap repo
-- [x] 1 Docker db
-- [x] 2 Schéma DB + migrations
-- [x] 3 ETL fetch + parse
-- [ ] 4 ETL chargement atomique   <-- ici
-- [ ] 5 API search
-- [ ] 6 Durcissement API
-- [ ] 7 Frontend carte
-- [ ] 8 Frontend résultats
-- [ ] 9 Prod compose
-- [ ] 10 Finitions
-
-## Journal (3 dernières entrées)
-- 2026-08-28 — étape 3 : adaptateur JSON + dépivot, 20 tests verts. Fixture dans `api/tests/fixtures/ods_sample.json`.
-- ...
-
-## Points ouverts / blocages
-- (aucun)
-```
-
-Copier également la présente doc d'architecture dans `docs/ARCHITECTURE.md` à l'étape 0, afin que le repo soit autonome sans le fichier de plan.
-
-## 14. Hypothèses
+## 12. Hypothèses
 
 1. La ressource « améliorée » visée est bien le dataset ODS `prix-des-carburants-en-france-flux-instantane-v2` (data.economie.gouv.fr), pas le ZIP/XML `roulez-eco.fr` historique.
 2. Le pull unique à 06:00 (heure Paris) est suffisant ; pas de besoin temps réel intra-journalier.
