@@ -1,14 +1,14 @@
 # PROGRESS — FuelNow
 
 ## Où en est-on
-- Étape courante : 0/10 — Bootstrap repo
-- Statut : terminé
-- Dernière vérif : `git log --oneline` affiche le commit initial
+- Étape courante : 2/10 — Schéma DB + migrations
+- Statut : à démarrer
+- Dernière vérif : `docker compose exec db psql -U fuelnow -c "select postgis_version()"` → PostGIS 3.4 OK
 
 ## À faire maintenant (prochaine action concrète)
-1. Créer `docker-compose.yml` avec le service `db` (postgis/postgis:16-3.4) + volume `pgdata`.
-2. Vérifier : `docker compose up -d db && docker compose exec db psql -U fuelnow -c "select postgis_version()"`
-3. Attendu : PostGIS répond avec une version 3.x.
+1. Créer `api/pyproject.toml` (dépendances : fastapi, uvicorn, sqlalchemy, asyncpg, alembic, pydantic, httpx, geoalchemy2).
+2. Créer `api/alembic.ini` + `api/alembic/env.py` + première révision (extension postgis, ENUMs, `stations`, `station_prices`, `etl_runs`, index GiST).
+3. Vérifier : `docker compose exec api alembic upgrade head` puis `\d+ stations` montre l'index GiST.
 
 ## Contexte minimal indispensable
 - Doc d'architecture : `docs/ARCHITECTURE.md` (à lire avant toute décision).
@@ -31,8 +31,8 @@
 
 ## Étapes
 - [x] 0 Bootstrap repo
-- [ ] 1 Docker db
-- [ ] 2 Schéma DB + migrations
+- [x] 1 Docker db
+- [ ] 2 Schéma DB + migrations    <-- ici
 - [ ] 3 ETL fetch + parse
 - [ ] 4 ETL chargement atomique
 - [ ] 5 API search
@@ -43,7 +43,8 @@
 - [ ] 10 Finitions
 
 ## Journal (3 dernières entrées)
-- 2026-08-28 — étape 0 : git init, arbo `api/ web/ docs/ scripts/`, `.gitignore`, `.env.example`, `docs/ARCHITECTURE.md` copié depuis le plan.
+- 2026-08-28 — étape 1 : docker-compose.yml avec db (postgis/postgis:16-3.4), volume pgdata, healthcheck. PostGIS 3.4 vérifié.
+- 2026-08-28 — étape 0 : git init, arbo, .gitignore, .env.example, docs/ARCHITECTURE.md, PROGRESS.md.
 
 ## Points ouverts / blocages
 - (aucun)
