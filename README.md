@@ -79,6 +79,13 @@ L'application est disponible sur `http://localhost:8080` (nginx sert la SPA + pr
 ### Mise à jour standard
 
 ```bash
+# Script automatique : git pull → build → migrations → restart
+./deploy.sh
+```
+
+Ou manuellement :
+
+```bash
 # 1. Récupérer le code le plus récent
 git pull
 
