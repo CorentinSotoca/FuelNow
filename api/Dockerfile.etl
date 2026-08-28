@@ -20,10 +20,8 @@ RUN ARCH=amd64 && \
     chmod +x "supercronic-linux-${ARCH}" && \
     mv "supercronic-linux-${ARCH}" /usr/local/bin/supercronic
 
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
-
 COPY . .
+RUN pip install --no-cache-dir .
 
 RUN chmod +x /app/etl/entrypoint.sh && \
     useradd -r -u 1000 appuser && chown -R appuser:appuser /app

@@ -10,10 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
-
 COPY . .
+RUN pip install --no-cache-dir .
 
 RUN useradd -r -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
