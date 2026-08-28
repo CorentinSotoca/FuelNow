@@ -14,6 +14,8 @@ const DEFAULT_RADIUS_M = 5000;
 const DEFAULT_FUEL: FuelCode = "gazole";
 const MAX_RADIUS_M = 30000;
 const SAVED_POINT_KEY = "fuelnow:lastPosition";
+const SAVED_FUEL_KEY = "fuelnow:lastFuel";
+const SAVED_RADIUS_KEY = "fuelnow:lastRadius";
 const GPS_PROMPT_SEEN_KEY = "fuelnow:gpsPromptSeen_v2";
 
 export type GpsState = {
@@ -71,8 +73,20 @@ function App() {
     } catch {}
     return null;
   });
-  const [radiusM, setRadiusM] = useState(DEFAULT_RADIUS_M);
-  const [fuel, setFuel] = useState<FuelCode>(DEFAULT_FUEL);
+  const [radiusM, setRadiusM] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(SAVED_RADIUS_KEY);
+      if (saved) return Number(saved);
+    } catch {}
+    return DEFAULT_RADIUS_M;
+  });
+  const [fuel, setFuel] = useState<FuelCode>(() => {
+    try {
+      const saved = localStorage.getItem(SAVED_FUEL_KEY) as FuelCode | null;
+      if (saved) return saved;
+    } catch {}
+    return DEFAULT_FUEL;
+  });
   const [fuels, setFuels] = useState<FuelInfo[]>([]);
   const [sort, setSort] = useState<"price" | "distance">("price");
   const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
@@ -137,6 +151,14 @@ function App() {
       } catch {}
     }
   }, [point?.lat, point?.lon]);
+
+  useEffect(() => {
+    try { localStorage.setItem(SAVED_FUEL_KEY, fuel); } catch {}
+  }, [fuel]);
+
+  useEffect(() => {
+    try { localStorage.setItem(SAVED_RADIUS_KEY, String(radiusM)); } catch {}
+  }, [radiusM]);
 
   const startGpsTracking = useCallback(() => {
     if (!navigator.geolocation) {
