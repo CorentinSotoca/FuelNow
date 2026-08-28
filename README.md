@@ -40,18 +40,29 @@ cd web && npm install && npm run dev
 
 ```bash
 cp .env.example .env
-# Éditer .env : POSTGRES_PASSWORD, CORS_ALLOW_ORIGINS, etc.
+# Éditer .env : POSTGRES_PASSWORD, CORS_ALLOW_ORIGINS, WEB_PORT, etc.
 
-docker compose -f docker-compose.prod.yml up -d --build
+# 1. Build des images et lancement de la base
+docker compose -f docker-compose.prod.yml up -d --build db
 
-# Migration initiale
+# 2. Attendre que la base soit saine
+docker compose -f docker-compose.prod.yml wait db
+
+# 3. Appliquer les migrations (création des tables)
 docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 
-# Premier chargement ETL
+# 4. Premier chargement ETL (~10 000 stations)
 docker compose -f docker-compose.prod.yml run --rm etl python -m etl.run
+
+# 5. Lancer l'API et le frontend
+docker compose -f docker-compose.prod.yml up -d api web
 ```
 
 L'application est disponible sur `http://localhost:8080` (nginx sert la SPA + proxy `/api` vers FastAPI).
+
+> **Important** : les étapes 3 et 4 doivent être exécutées avant de lancer l'API.
+> Sans migrations, `/health` renvoie une 500 (table `etl_runs` manquante).
+> Sans ETL, la recherche ne renvoie aucun résultat.
 
 ## Architecture
 
@@ -72,7 +83,7 @@ L'application est disponible sur `http://localhost:8080` (nginx sert la SPA + pr
 
 - **ETL** : fetch gzip JSON → validation Pydantic → dépivot 6 carburants → garde-fou (80% du dernier run) → staging tables → `TRUNCATE`+`INSERT` atomique.
 - **API** : `ST_DWithin` + `ST_Distance` sur `geography` (index GiST). Rate limit 60/min/IP, ETag + Cache-Control 900s.
-- **Frontend** : debounce 400ms, marqueurs HTML colorés par quartile de prix avec prix affiché directement sur la carte, liaison liste↔carte, popup, itinéraire OSM. Responsive mobile : bottom sheet 3 positions, bouton géoloc.
+- **Frontend** : debounce 400ms, marqueurs HTML colorés par quartile de prix avec prix affiché directement sur la carte, liaison liste↔carte, popup, itinéraire via URI `geo:` (app de maps par défaut). Responsive mobile : bottom sheet 3 positions, bouton géoloc.
 
 ## Endpoints API
 
@@ -101,6 +112,7 @@ L'application est disponible sur `http://localhost:8080` (nginx sert la SPA + pr
 | `LOG_LEVEL` | `INFO` | Niveau de log |
 | `CORS_ALLOW_ORIGINS` | (vide) | Origines CORS séparées par virgules (vide = désactivé) |
 | `ALERT_WEBHOOK_URL` | (vide) | Webhook d'alerte (Discord/ntfy) si ETL échoue |
+| `WEB_PORT` | `8080` | Port d'exposition du frontend nginx |
 
 ## Commandes utiles
 
