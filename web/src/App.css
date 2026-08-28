@@ -345,6 +345,25 @@
   justify-content: space-between;
 }
 
+/* ─── Sidebar footer ─── */
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: 0.5rem 1.25rem;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.sidebar-footer a {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  text-decoration: none;
+}
+
+.sidebar-footer a:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
 .btn-geolocate {
   display: none;
 }
@@ -483,7 +502,8 @@
 
   /* Hide hint when sheet collapsed, keep only handle visible */
   .sidebar.sheet-collapsed .sidebar-controls,
-  .sidebar.sheet-collapsed .sidebar-results {
+  .sidebar.sheet-collapsed .sidebar-results,
+  .sidebar.sheet-collapsed .sidebar-footer {
     display: none;
   }
 

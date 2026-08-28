@@ -126,6 +126,12 @@ function App() {
             />
           )}
         </div>
+
+        <div className="sidebar-footer">
+          <a href="https://github.com/CorentinSotoca/FuelNow" target="_blank" rel="noopener noreferrer">
+            GitHub
+          </a>
+        </div>
       </div>
     </div>
   );
