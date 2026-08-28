@@ -72,7 +72,7 @@ L'application est disponible sur `http://localhost:8080` (nginx sert la SPA + pr
 
 - **ETL** : fetch gzip JSON → validation Pydantic → dépivot 6 carburants → garde-fou (80% du dernier run) → staging tables → `TRUNCATE`+`INSERT` atomique.
 - **API** : `ST_DWithin` + `ST_Distance` sur `geography` (index GiST). Rate limit 60/min/IP, ETag + Cache-Control 900s.
-- **Frontend** : debounce 400ms, marqueurs colorés par quartile de prix, liaison liste↔carte, popup, itinéraire OSM.
+- **Frontend** : debounce 400ms, marqueurs HTML colorés par quartile de prix avec prix affiché directement sur la carte, liaison liste↔carte, popup, itinéraire OSM. Responsive mobile : bottom sheet 3 positions, bouton géoloc.
 
 ## Endpoints API
 
