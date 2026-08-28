@@ -15,11 +15,17 @@ const DEFAULT_FUEL: FuelCode = "gazole";
 const MAX_RADIUS_M = 30000;
 const SAVED_POINT_KEY = "fuelnow:lastPosition";
 
+export type GpsState = {
+  position: LatLon;
+  accuracy: number;
+  heading: number | null;
+};
+
 type SheetState = "collapsed" | "half" | "full";
 
 const SHEET_HEIGHTS: Record<SheetState, number> = {
   collapsed: 56,
-  half: 0.5, // fraction of vh
+  half: 0.5,
   full: 0.88,
 };
 
@@ -72,10 +78,13 @@ function App() {
   const [hoveredStationId, setHoveredStationId] = useState<number | null>(null);
   const [sheetState, setSheetState] = useState<SheetState>("half");
   const [geoLoading, setGeoLoading] = useState(false);
+  const [gpsTracking, setGpsTracking] = useState(false);
+  const [gps, setGps] = useState<GpsState | null>(null);
   const online = useOnlineStatus();
 
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const watchIdRef = useRef<number | null>(null);
 
   const { data, loading, error, retry, inBelgium, bePrices, beLoading } = useDebouncedSearch({
     point,
@@ -98,6 +107,63 @@ function App() {
     }
   }, [point?.lat, point?.lon]);
 
+  useEffect(() => {
+    if (!gpsTracking) {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setGpsTracking(false);
+      return;
+    }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        setGps({
+          position: { lat: pos.coords.latitude, lon: pos.coords.longitude },
+          accuracy: pos.coords.accuracy,
+          heading: pos.coords.heading,
+        });
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
+    );
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  }, [gpsTracking]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden && watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      } else if (!document.hidden && gpsTracking && watchIdRef.current === null) {
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => {
+            setGps({
+              position: { lat: pos.coords.latitude, lon: pos.coords.longitude },
+              accuracy: pos.coords.accuracy,
+              heading: pos.coords.heading,
+            });
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
+        );
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [gpsTracking]);
+
   const handleExpandRadius = (deltaM: number) => {
     setRadiusM((r) => Math.min(r + deltaM, MAX_RADIUS_M));
   };
@@ -107,13 +173,27 @@ function App() {
     setGeoLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setPoint({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        const p = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setPoint(p);
+        setGps({
+          position: p,
+          accuracy: pos.coords.accuracy,
+          heading: pos.coords.heading,
+        });
         setGeoLoading(false);
       },
       () => setGeoLoading(false),
       { timeout: 5000, enableHighAccuracy: true },
     );
   }, []);
+
+  const toggleGpsTracking = useCallback(() => {
+    setGpsTracking((prev) => !prev);
+  }, []);
+
+  const syncToGps = useCallback(() => {
+    if (gps) setPoint(gps.position);
+  }, [gps]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     dragRef.current = {
@@ -169,6 +249,10 @@ function App() {
         hoveredStationId={hoveredStationId}
         onStationClick={handleSelectStation}
         onStationHover={setHoveredStationId}
+        gps={gps}
+        gpsTracking={gpsTracking}
+        onToggleGpsTracking={toggleGpsTracking}
+        onSyncToGps={syncToGps}
       />
 
       <div
