@@ -55,8 +55,31 @@ export function formatDelta(delta: number | null): string {
   return `+${delta.toFixed(3).replace(".", ",")} €`;
 }
 
+const BELGIUM_BUFFER_POLYGON: [number, number][] = [
+  [51.55, 2.34],
+  [51.55, 4.61],
+  [51.44, 6.26],
+  [50.93, 6.21],
+  [50.33, 6.58],
+  [49.33, 6.00],
+  [49.33, 5.28],
+  [49.34, 4.31],
+  [49.32, 3.38],
+  [49.31, 2.69],
+  [50.72, 2.37],
+];
+
 export function isNearBelgium(lat: number, lon: number): boolean {
-  return lat >= 49.3 && lat <= 51.7 && lon >= 2.2 && lon <= 6.8;
+  const n = BELGIUM_BUFFER_POLYGON.length;
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [yi, xi] = BELGIUM_BUFFER_POLYGON[i];
+    const [yj, xj] = BELGIUM_BUFFER_POLYGON[j];
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 export function formatBeDate(dateStr: string): string {
