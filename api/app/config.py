@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     alert_webhook_url: str = ""
     cors_allow_origins: str = ""
-    statbel_api_url: str = "https://bestat.economie.fgov.be/bestat/api/views/9e9cf394-6c54-4d81-8013-7124a8c4bf15/result/JSON"
+    statbel_api_url: str = "https://bestat.statbel.fgov.be/bestat/api/views/9e9cf394-6c54-4d81-8013-7124a8c4bf15/result/JSON"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

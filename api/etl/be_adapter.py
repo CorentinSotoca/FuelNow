@@ -58,7 +58,7 @@ class StatbelAdapter:
 
     @classmethod
     async def fetch(cls, url: str, *, timeout: float = 60.0) -> "StatbelAdapter":
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             for attempt in range(3):
                 resp = await client.get(url)
                 if resp.status_code == 200:
