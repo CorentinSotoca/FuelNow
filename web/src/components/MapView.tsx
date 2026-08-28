@@ -46,7 +46,7 @@ interface MapViewProps {
 
 function formatPriceLabel(price: number | null): string {
   if (price === null) return "—";
-  return price.toFixed(2).replace(".", ",");
+  return price.toFixed(3).replace(".", ",");
 }
 
 function applyStationElStyle(

@@ -70,13 +70,64 @@ L'application est disponible sur `http://localhost:8080` (nginx sert la SPA + pr
 
 ## Mise à jour
 
+### Mise à jour standard
+
 ```bash
+# 1. Récupérer le code le plus récent
 git pull
+
+# 2. Reconstruire les images et relancer les conteneurs
 docker compose -f docker-compose.prod.yml up -d --build
+
+# 3. Appliquer les migrations de base de données
 docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 ```
 
 Les migrations ne font rien si le schéma est déjà à jour. L'ETL continue de tourner automatiquement à 06h00 via supercronic.
+
+### Vérifier que la mise à jour s'est bien passée
+
+```bash
+# L'API répond et les données sont présentes
+curl -s http://localhost:8080/health | jq .
+
+# Les conteneurs tournent sans erreur
+docker compose -f docker-compose.prod.yml ps
+
+# Logs de l'API (aucune erreur attendue)
+docker compose -f docker-compose.prod.yml logs --tail=20 api
+
+# Logs de l'ETL (vérifier le dernier run)
+docker compose -f docker-compose.prod.yml logs --tail=20 etl
+```
+
+### Rollback (en cas de problème)
+
+```bash
+# Revenir à la version précédente
+git checkout <hash-du-commit-précédent>
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm api alembic downgrade -1
+```
+
+> ⚠️ Le rollback de la base ne fonctionne que si la migration descendante existe et n'est pas destructive. Vérifier le contenu de `api/alembic/versions/` avant de downgrade.
+
+### Mettre à jour uniquement le frontend
+
+Si seuls des fichiers du dossier `web/` ont changé :
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml up -d --build web
+```
+
+Aucune migration ni redémarrage de l'API nécessaire.
+
+### Forcer un rechargement ETL manuellement
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm etl python -m etl.run
+```
 
 ## Architecture
 

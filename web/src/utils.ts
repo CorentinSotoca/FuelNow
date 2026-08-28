@@ -47,10 +47,10 @@ export function formatHoursAgo(iso: string | null): string {
 
 export function formatPrice(price: number | null): string {
   if (price === null) return "—";
-  return `${price.toFixed(2).replace(".", ",")} €`;
+  return `${price.toFixed(3).replace(".", ",")} €`;
 }
 
 export function formatDelta(delta: number | null): string {
   if (delta === null || delta === 0) return "moins cher";
-  return `+${delta.toFixed(2).replace(".", ",")} €`;
+  return `+${delta.toFixed(3).replace(".", ",")} €`;
 }
