@@ -4,6 +4,7 @@ import {
   Marker,
   Popup,
   type GeoJSONSource,
+  type MapLayerMouseEvent,
   type MapMouseEvent,
   type StyleSpecification,
 } from "maplibre-gl";
@@ -158,14 +159,14 @@ export function MapView({
       callbacksRef.current.onPointChange({ lat: e.lngLat.lat, lon: e.lngLat.lng });
     });
 
-    map.on("click", STATION_LAYER_ID, (e: MapMouseEvent) => {
+    map.on("click", STATION_LAYER_ID, (e: MapLayerMouseEvent) => {
       const f = e.features?.[0];
       if (!f) return;
       const id = f.properties?.id as number;
       callbacksRef.current.onStationClick(id);
 
-      const lat = (f.geometry as { coordinates: [number, number] }).coordinates[1];
-      const lon = (f.geometry as { coordinates: [number, number] }).coordinates[0];
+      const lat = (f.geometry as unknown as { coordinates: [number, number] }).coordinates[1];
+      const lon = (f.geometry as unknown as { coordinates: [number, number] }).coordinates[0];
       const price = f.properties?.price as number | null;
       const address = f.properties?.address as string;
       const distance = f.properties?.distance_m as number;
@@ -186,7 +187,7 @@ export function MapView({
     map.on("mouseenter", STATION_LAYER_ID, () => {
       map.getCanvas().style.cursor = "pointer";
     });
-    map.on("mousemove", STATION_LAYER_ID, (e: MapMouseEvent) => {
+    map.on("mousemove", STATION_LAYER_ID, (e: MapLayerMouseEvent) => {
       const f = e.features?.[0];
       if (f) callbacksRef.current.onStationHover(f.properties?.id as number);
     });

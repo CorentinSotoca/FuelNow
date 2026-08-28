@@ -1,0 +1,32 @@
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+ARG SUPERCRONIC_VERSION=v0.2.33
+RUN ARCH=amd64 && \
+    case "$(dpkg --print-architecture)" in \
+        amd64) ARCH=amd64 ;; \
+        arm64) ARCH=arm64 ;; \
+    esac && \
+    curl -fsSLO "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${ARCH}" && \
+    chmod +x "supercronic-linux-${ARCH}" && \
+    mv "supercronic-linux-${ARCH}" /usr/local/bin/supercronic
+
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir .
+
+COPY . .
+
+RUN chmod +x /app/etl/entrypoint.sh && \
+    useradd -r -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+CMD ["/app/etl/entrypoint.sh"]

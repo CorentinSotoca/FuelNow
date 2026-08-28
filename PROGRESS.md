@@ -1,16 +1,16 @@
 # PROGRESS — FuelNow
 
 ## Où en est-on
-- Étape courante : 9/10 — Prod compose
+- Étape courante : 10/10 — Finitions
 - Statut : à démarrer
-- Dernière vérif : Playwright headless 17/17 — page, 6 carburants, slider, marqueur, 25 cards, prix trié = 2,17 € (concordant API), tri distance, sélection card + popup, lien itinéraire OSM, MAJ text, switch carburant SP95 → 2,27 €, 0 erreur console.
+- Dernière vérif : `docker compose -f docker-compose.prod.yml up -d` → 4 services healthy (db, api, etl, web). Smoke test via nginx:8080 → /health ok, /api/fuels 6 carburants, /api/stations/search 33 stations Paris gazole, SPA fallback 200 OK. ETL supercronic tourne.
 
 ## À faire maintenant (prochaine action concrète)
-1. `docker-compose.prod.yml` : build images API + web (nginx sert le build statique Vite), pas de volume dev, healthchecks, restart policy.
-2. `web/Dockerfile` multi-stage : build Vite → nginx alpine + config SPA fallback.
-3. `api/Dockerfile` : image prod Python, pas de mount de code, entrypoint uvicorn.
-4. Variables d'env prod : `DATABASE_URL`, `CORS_ALLOW_ORIGINS`, `ETL_CRON_SCHEDULE`.
-5. Smoke test : `docker compose -f docker-compose.prod.yml up -d` → curl /health + /api/fuels + /api/stations/search.
+1. README.md : architecture, stack, quickstart dev + prod, variables d'env, commandes.
+2. `.dockerignore` pour api/ et web/ (éviter node_modules, .git, etc. dans le build context).
+3. Vérifier que les 24 tests passent toujours.
+4. Smoke test final complet : dev compose + prod compose.
+5. Nettoyage fichiers temporaires éventuels.
 
 ## Contexte minimal indispensable
 - Doc d'architecture : `docs/ARCHITECTURE.md` (à lire avant toute décision).
@@ -23,7 +23,8 @@
 - ETL load : `api/etl/load.py` (staging tables temp + inserts SQLAlchemy Core paramétrés par batch de 500 + TRUNCATE/INSERT en transaction), `api/etl/run.py` (orchestrateur + etl_runs). Point d'attention : ne jamais construire de SQL par interpolation de chaînes (problèmes de quoting JSON) — toujours passer par des paramètres liés ; ne jamais passer `func.now()`/expressions SQL dans des params `executemany` (asyncpg attend une vraie valeur Python) → utiliser `datetime.now(timezone.utc)`.
 - API : `app/routes/{health,fuels,stations}.py`, `app/schemas.py` (Pydantic), `app/status.py` (last_success_at/stale partagé, seuil 26h). Requête search en SQL brut (CTE `filtered`+`agg`) car ORM peu adapté à `ST_DWithin`/`ST_Distance`/agrégats de fenêtre ; `order_by` choisi en Python selon `sort` (valeur restreinte par `Literal`, donc pas d'injection) puis formaté dans le template SQL.
 - Durcissement : `app/limiter.py` (slowapi, clé = X-Forwarded-For sinon IP réelle), ETag/Cache-Control sur `/api/stations/search`, CORS désactivé sauf `CORS_ALLOW_ORIGINS` défini. Tests API dans `api/tests/test_api_search.py` avec fixtures sur IDs sentinelles 900000001-5 (loin des vraies données, nettoyées après chaque test). **Piège pytest-asyncio** : avec un engine SQLAlchemy async créé au niveau module, il faut `asyncio_default_fixture_loop_scope = "session"` et `asyncio_default_test_loop_scope = "session"` dans `pyproject.toml`, sinon erreur asyncpg « another operation in progress » (event loop différent par test vs connexions du pool liées à la loop de création).
-- Frontend : `web/` Vite + React-TS + maplibre-gl v6. `MapView` (carte OSM, clic/drag point, cercle GeoJSON, marqueurs stations colorés par quartile de prix, popup, liaison liste↔carte hover/clic), `FuelSelect`, `RadiusControl`, `ResultsList` + `StationCard` (rang, prix, delta, distance, adresse, badge autoroute, MAJ, itinéraire OSM), `useDebouncedSearch` (400 ms, race-condition safe via reqId), `utils.ts` (quartiles, formatage prix/distance/MAJ). États : loading/empty (élargir +5 km)/error réseau+retry/429/stale banner. Tri prix|distance. **Piège maplibre-gl v6 + Vite** : le pré-bundling (optimizeDeps) casse l'URL du Web Worker interne ; Fix : `optimizeDeps.exclude: ['maplibre-gl']`. **Piège step expression MapLibre** : les quartiles peuvent avoir des valeurs égales (prix identiques) → `step` exige des stops strictement croissants → filtrer les doublons dans `buildColorExpression`. **Note** : les classes CSS popup en maplibre-gl v6 sont préfixées `maplibregl-` (pas `maplibre-`).
+- Frontend : `web/` Vite + React-TS + maplibre-gl v6. `MapView` (carte OSM, clic/drag point, cercle GeoJSON, marqueurs stations colorés par quartile de prix, popup, liaison liste↔carte hover/clic), `FuelSelect`, `RadiusControl`, `ResultsList` + `StationCard` (rang, prix, delta, distance, adresse, badge autoroute, MAJ, itinéraire OSM), `useDebouncedSearch` (400 ms, race-condition safe via reqId), `utils.ts` (quartiles, formatage prix/distance/MAJ). États : loading/empty (élargir +5 km)/error réseau+retry/429/stale banner. Tri prix|distance. **Piège maplibre-gl v6 + Vite** : le pré-bundling (optimizeDeps) casse l'URL du Web Worker interne ; Fix : `optimizeDeps.exclude: ['maplibre-gl']`. **Piège step expression MapLibre** : les quartiles peuvent avoir des valeurs égales (prix identiques) → `step` exige des stops strictement croissants → filtrer les doublons dans `buildColorExpression`. **Note** : les classes CSS popup en maplibre-gl v6 sont préfixées `maplibregl-` (pas `maplibre-`). **Piège TypeScript** : `erasableSyntaxOnly` bloque les classes avec param properties (ApiError) → désactivé. `MapMouseEvent` n'a pas `features` en v6 → utiliser `MapLayerMouseEvent` pour les handlers de layer.
+- Prod : `docker-compose.prod.yml` (db, api, etl, web). `api/Dockerfile` (user non-root, uvicorn). `api/Dockerfile.etl` (supercronic + entrypoint.sh). `web/Dockerfile` (multi-stage Vite build → nginx alpine). `web/nginx.conf` (SPA fallback + proxy /api + /health). **Piège supercronic** : (1) format crontab = 6 champs (sec min hour dom mon dow), pas 5 comme cron classique → entrypoint.sh préfixe "0 " si 5 champs. (2) supercronic en PID 1 crash sur "Failed to fork exec: no such file or directory" à cause du reaping → flag `-no-reap`. (3) Pas de substitution de variables d'env dans le crontab → entrypoint.sh génère le fichier au runtime.
 
 ## Décisions figées (ne pas rediscuter)
 - Pas d'historique de prix en v1.
@@ -34,9 +35,12 @@
 - ENUMs créés manuellement dans la migration (postgresql.ENUM avec create_type=False).
 
 ## Commandes utiles
-- `docker compose up -d db && docker compose run --rm api alembic upgrade head`
-- `docker compose run --rm etl python -m etl.run`
-- `docker compose run --rm api pytest tests/ -q`
+- Dev : `docker compose up -d db && docker compose run --rm api alembic upgrade head`
+- Dev ETL : `docker compose run --rm etl python -m etl.run`
+- Dev tests : `docker compose run --rm api pytest tests/ -q`
+- Prod : `docker compose -f docker-compose.prod.yml up -d --build`
+- Prod migration : `docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head`
+- Prod ETL manuel : `docker compose -f docker-compose.prod.yml run --rm etl python -m etl.run`
 
 ## Étapes
 - [x] 0 Bootstrap repo
@@ -48,13 +52,13 @@
 - [x] 6 Durcissement API
 - [x] 7 Frontend carte
 - [x] 8 Frontend résultats
-- [ ] 9 Prod compose       <-- ici
-- [ ] 10 Finitions
+- [x] 9 Prod compose
+- [ ] 10 Finitions          <-- ici
 
 ## Journal (3 dernières entrées)
+- 2026-08-28 — étape 9 : docker-compose.prod.yml (4 services). api/Dockerfile (user non-root). api/Dockerfile.etl (supercronic + entrypoint.sh). web/Dockerfile (multi-stage Vite → nginx). web/nginx.conf (SPA + proxy /api). 3 pièges supercronic : 6 champs, -no-reap, pas de var subst. Fix TypeScript : erasableSyntaxOnly=false, MapLayerMouseEvent. Smoke test nginx:8080 OK.
 - 2026-08-28 — étape 8 : ResultsList + StationCard + useDebouncedSearch (400 ms). Marqueurs stations sur carte colorés par quartile (step expression avec filtrage doublons). Liaison liste↔carte (hover/clic + popup + flyTo). États : loading/empty (+5 km)/error réseau/429/stale banner. Tri prix|distance. Lien itinéraire OSM. 17/17 Playwright, prix UI = API (2,17 €). 0 erreur console.
 - 2026-08-28 — étape 7 : web/ Vite+React-TS+maplibre-gl v6. MapView (OSM, clic/drag, cercle GeoJSON), FuelSelect, RadiusControl, api.ts, geo.ts. Bug worker maplibre-gl+vite résolu (optimizeDeps.exclude). Vérifié Playwright headless.
-- 2026-08-28 — étape 6 : app/limiter.py (slowapi 60/min/IP sur /search), ETag+Cache-Control (304 si If-None-Match), CORS conditionnel. test_api_search.py (11 cas, fixtures sentinelles nettoyées). Fix pytest-asyncio loop scope=session. 24 tests verts au total.
 
 ## Points ouverts / blocages
 - (aucun)

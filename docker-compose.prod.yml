@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fuelnow}
+      POSTGRES_USER: ${POSTGRES_USER:-fuelnow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      TZ: Europe/Paris
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - backend
+
+  api:
+    build: ./api
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  etl:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.etl
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+
+  web:
+    build: ./web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+
+networks:
+  backend:
+    internal: false
