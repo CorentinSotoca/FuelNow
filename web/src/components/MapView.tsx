@@ -4,14 +4,12 @@ import {
   Marker,
   Popup,
   type GeoJSONSource,
-  type MapLayerMouseEvent,
-  type MapMouseEvent,
   type StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { LatLon, StationSearchItem } from "../types";
 import { circleGeoJSON } from "../geo";
-import { formatDistance, formatPrice, priceQuartiles, type Quartiles } from "../utils";
+import { formatDistance, formatPrice, priceQuartiles, quartileColor } from "../utils";
 
 const FRANCE_CENTER: LatLon = { lat: 46.6, lon: 2.5 };
 const FRANCE_ZOOM = 5.3;
@@ -30,9 +28,6 @@ const OSM_STYLE: StyleSpecification = {
 };
 
 const CIRCLE_SOURCE_ID = "search-radius";
-const STATION_SOURCE_ID = "station-markers";
-const STATION_LAYER_ID = "station-markers";
-const MARKER_ELEMENT_ID = "search-point-marker";
 
 interface MapViewProps {
   point: LatLon | null;
@@ -45,44 +40,36 @@ interface MapViewProps {
   onStationHover: (id: number | null) => void;
 }
 
-function stationsToGeoJSON(stations: StationSearchItem[]) {
-  return {
-    type: "FeatureCollection" as const,
-    features: stations.map((s) => ({
-      type: "Feature" as const,
-      geometry: { type: "Point" as const, coordinates: [s.lon, s.lat] },
-      properties: {
-        id: s.id,
-        price: s.price_eur,
-        address: s.address ?? "",
-        city: s.city ?? "",
-        distance_m: s.distance_m,
-      },
-    })),
-  };
+function formatPriceLabel(price: number | null): string {
+  if (price === null) return "—";
+  return price.toFixed(2).replace(".", ",");
 }
 
-function buildColorExpression(q: Quartiles | null) {
-  if (!q) return "#2563eb";
-  const stops: (string | number)[] = [];
-  let prev = -Infinity;
-  for (const [val, color] of [
-    [0, "#16a34a"],
-    [q.q1, "#84cc16"],
-    [q.q2, "#f59e0b"],
-    [q.q3, "#dc2626"],
-  ] as [number, string][]) {
-    if (val > prev) {
-      stops.push(val, color);
-      prev = val;
-    }
-  }
-  return [
-    "step",
-    ["coalesce", ["get", "price"], -1],
-    "#9ca3af",
-    ...stops,
-  ] as unknown as string;
+function applyStationElStyle(
+  el: HTMLElement,
+  station: StationSearchItem,
+  color: string,
+  selected: boolean,
+  hovered: boolean,
+) {
+  el.textContent = formatPriceLabel(station.price_eur);
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.justifyContent = "center";
+  el.style.borderRadius = "999px";
+  el.style.fontFamily = "system-ui, sans-serif";
+  el.style.fontWeight = "700";
+  el.style.color = "white";
+  el.style.background = color;
+  el.style.border = "2px solid white";
+  el.style.boxShadow = "0 1px 4px rgba(0,0,0,0.35)";
+  el.style.cursor = "pointer";
+  el.style.fontSize = `${selected ? 13 : hovered ? 12 : 11}px`;
+  el.style.minWidth = `${selected ? 42 : hovered ? 38 : 34}px`;
+  el.style.height = `${selected ? 28 : hovered ? 25 : 22}px`;
+  el.style.padding = "0 6px";
+  el.style.whiteSpace = "nowrap";
+  el.style.zIndex = selected ? "1000" : "";
 }
 
 export function MapView({
@@ -100,6 +87,7 @@ export function MapView({
   const markerRef = useRef<Marker | null>(null);
   const popupRef = useRef<Popup | null>(null);
   const styleReadyRef = useRef(false);
+  const stationMarkersRef = useRef<Map<number, Marker>>(new Map());
   const callbacksRef = useRef({ onPointChange, onStationClick, onStationHover });
   callbacksRef.current = { onPointChange, onStationClick, onStationHover };
 
@@ -134,66 +122,11 @@ export function MapView({
         paint: { "line-color": "#2563eb", "line-width": 2 },
       });
 
-      map.addSource(STATION_SOURCE_ID, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      map.addLayer({
-        id: STATION_LAYER_ID,
-        type: "circle",
-        source: STATION_SOURCE_ID,
-        paint: {
-          "circle-color": "#2563eb",
-          "circle-radius": 6,
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 1.5,
-        },
-      });
-
       styleReadyRef.current = true;
     });
 
-    map.on("click", (e: MapMouseEvent) => {
-      const features = map.queryRenderedFeatures(e.point, { layers: [STATION_LAYER_ID] });
-      if (features.length > 0) return;
+    map.on("click", (e) => {
       callbacksRef.current.onPointChange({ lat: e.lngLat.lat, lon: e.lngLat.lng });
-    });
-
-    map.on("click", STATION_LAYER_ID, (e: MapLayerMouseEvent) => {
-      const f = e.features?.[0];
-      if (!f) return;
-      const id = f.properties?.id as number;
-      callbacksRef.current.onStationClick(id);
-
-      const lat = (f.geometry as unknown as { coordinates: [number, number] }).coordinates[1];
-      const lon = (f.geometry as unknown as { coordinates: [number, number] }).coordinates[0];
-      const price = f.properties?.price as number | null;
-      const address = f.properties?.address as string;
-      const distance = f.properties?.distance_m as number;
-
-      const html = `
-        <div class="station-popup">
-          <div class="station-popup-price">${formatPrice(price)}</div>
-          ${address ? `<div class="station-popup-addr">${address}</div>` : ""}
-          <div class="station-popup-dist">${formatDistance(distance)}</div>
-        </div>`;
-      popupRef.current?.remove();
-      popupRef.current = new Popup({ closeButton: false, closeOnClick: true })
-        .setLngLat([lon, lat])
-        .setHTML(html)
-        .addTo(map);
-    });
-
-    map.on("mouseenter", STATION_LAYER_ID, () => {
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mousemove", STATION_LAYER_ID, (e: MapLayerMouseEvent) => {
-      const f = e.features?.[0];
-      if (f) callbacksRef.current.onStationHover(f.properties?.id as number);
-    });
-    map.on("mouseleave", STATION_LAYER_ID, () => {
-      map.getCanvas().style.cursor = "";
-      callbacksRef.current.onStationHover(null);
     });
 
     if (navigator.geolocation) {
@@ -208,6 +141,8 @@ export function MapView({
 
     return () => {
       popupRef.current?.remove();
+      stationMarkersRef.current.forEach((m) => m.remove());
+      stationMarkersRef.current.clear();
       map.remove();
       mapRef.current = null;
     };
@@ -220,14 +155,15 @@ export function MapView({
 
     if (!markerRef.current) {
       const el = document.createElement("div");
-      el.id = MARKER_ELEMENT_ID;
-      el.style.width = "18px";
-      el.style.height = "18px";
-      el.style.borderRadius = "50%";
-      el.style.background = "#dc2626";
-      el.style.border = "2px solid white";
-      el.style.boxShadow = "0 0 4px rgba(0,0,0,0.4)";
-      el.style.cursor = "grab";
+      el.style.cssText = `
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #dc2626;
+        border: 2px solid white;
+        box-shadow: 0 0 4px rgba(0,0,0,0.4);
+        cursor: grab;
+      `;
 
       const marker = new Marker({ element: el, draggable: true })
         .setLngLat([point.lon, point.lat])
@@ -271,47 +207,54 @@ export function MapView({
     const map = mapRef.current;
     if (!map) return;
 
-    const setStations = () => {
-      const source = map.getSource(STATION_SOURCE_ID) as GeoJSONSource | undefined;
-      if (!source) return;
-      source.setData(stationsToGeoJSON(stations));
+    const syncMarkers = () => {
+      const existing = stationMarkersRef.current;
+      const incomingIds = new Set(stations.map((s) => s.id));
+
+      existing.forEach((marker, id) => {
+        if (!incomingIds.has(id)) {
+          marker.remove();
+          existing.delete(id);
+        }
+      });
+
+      for (const station of stations) {
+        const color = quartileColor(station.price_eur, quartiles);
+        const isSel = station.id === selectedStationId;
+        const isHov = station.id === hoveredStationId;
+        const existingMarker = existing.get(station.id);
+
+        if (existingMarker) {
+          const el = existingMarker.getElement() as HTMLElement;
+          applyStationElStyle(el, station, color, isSel, isHov);
+        } else {
+          const el = document.createElement("div");
+          applyStationElStyle(el, station, color, isSel, isHov);
+          el.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            callbacksRef.current.onStationClick(station.id);
+          });
+          el.addEventListener("mouseenter", () => {
+            callbacksRef.current.onStationHover(station.id);
+          });
+          el.addEventListener("mouseleave", () => {
+            callbacksRef.current.onStationHover(null);
+          });
+
+          const marker = new Marker({ element: el })
+            .setLngLat([station.lon, station.lat])
+            .addTo(map);
+          existing.set(station.id, marker);
+        }
+      }
     };
 
     if (styleReadyRef.current) {
-      setStations();
+      syncMarkers();
     } else {
-      map.once("load", setStations);
+      map.once("load", syncMarkers);
     }
-  }, [stations]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !styleReadyRef.current) return;
-    if (!map.getLayer(STATION_LAYER_ID)) return;
-
-    map.setPaintProperty(STATION_LAYER_ID, "circle-color", buildColorExpression(quartiles));
-  }, [quartiles]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !styleReadyRef.current) return;
-    if (!map.getLayer(STATION_LAYER_ID)) return;
-
-    const sel = selectedStationId ?? -1;
-    const hov = hoveredStationId ?? -1;
-
-    map.setPaintProperty(STATION_LAYER_ID, "circle-radius", [
-      "case",
-      ["==", ["get", "id"], sel], 9,
-      ["==", ["get", "id"], hov], 7,
-      5,
-    ]);
-    map.setPaintProperty(STATION_LAYER_ID, "circle-stroke-width", [
-      "case",
-      ["==", ["get", "id"], sel], 3,
-      1.5,
-    ]);
-  }, [selectedStationId, hoveredStationId]);
+  }, [stations, quartiles, selectedStationId, hoveredStationId]);
 
   useEffect(() => {
     const map = mapRef.current;

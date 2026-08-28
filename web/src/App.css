@@ -19,13 +19,17 @@
   font-family: system-ui, sans-serif;
 }
 
+.sheet-handle {
+  display: none;
+}
+
 .sidebar-controls {
   flex-shrink: 0;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid #e5e7eb;
 }
 
-.sidebar-controls h1 {
+.controls-header h1 {
   margin: 0 0 0.25rem;
   font-size: 1.25rem;
 }
@@ -332,4 +336,159 @@
   font-size: 0.75rem;
   color: #9ca3af;
   margin-top: 0.1rem;
+}
+
+/* ─── Controls header (desktop) ─── */
+.controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-geolocate {
+  display: none;
+}
+
+/* ─── Mobile responsive ─── */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: 85vh;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.2);
+    transition: max-height 0.3s ease;
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+
+  .sidebar.sheet-collapsed {
+    max-height: 56px;
+  }
+  .sidebar.sheet-half {
+    max-height: 50vh;
+  }
+  .sidebar.sheet-full {
+    max-height: 88vh;
+  }
+
+  /* Drag handle + peek summary */
+  .sheet-handle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 0 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .handle-bar {
+    width: 40px;
+    height: 4px;
+    background: #d1d5db;
+    border-radius: 2px;
+  }
+
+  .sheet-peek {
+    font-size: 0.85rem;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 90vw;
+  }
+
+  .sheet-peek strong {
+    color: #1e40af;
+  }
+
+  /* Controls */
+  .sidebar-controls {
+    padding: 0.5rem 1rem 0.75rem;
+  }
+
+  .controls-header h1 {
+    font-size: 1.1rem;
+    margin: 0;
+  }
+
+  .btn-geolocate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+
+  .btn-geolocate:active {
+    background: #f0f4ff;
+  }
+
+  .sidebar-controls .hint {
+    margin: 0.25rem 0 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .fuel-select {
+    gap: 0.3rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .fuel-option {
+    padding: 0.35rem 0.7rem;
+    font-size: 0.82rem;
+  }
+
+  /* Results */
+  .results-header {
+    padding: 0.4rem 1rem;
+  }
+
+  .sort-btn {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.8rem;
+  }
+
+  .station-card {
+    padding: 0.55rem 0.4rem;
+  }
+
+  .station-card-rank {
+    width: 26px;
+    height: 26px;
+    font-size: 0.75rem;
+  }
+
+  .station-card-price {
+    font-size: 1.05rem;
+  }
+
+  .itinerary-link {
+    font-size: 0.78rem;
+  }
+
+  /* Hide hint when sheet collapsed, keep only handle visible */
+  .sidebar.sheet-collapsed .sidebar-controls,
+  .sidebar.sheet-collapsed .sidebar-results {
+    display: none;
+  }
+
+  /* Popup adjustments */
+  .station-popup-price {
+    font-size: 1rem;
+  }
 }
