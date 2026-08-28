@@ -14,8 +14,7 @@ const DEFAULT_RADIUS_M = 5000;
 const DEFAULT_FUEL: FuelCode = "gazole";
 const MAX_RADIUS_M = 30000;
 const SAVED_POINT_KEY = "fuelnow:lastPosition";
-const GPS_PROMPT_SEEN_KEY = "fuelnow:gpsPromptSeen";
-const GPS_OPT_OUT_KEY = "fuelnow:gpsOptOut";
+const GPS_PROMPT_SEEN_KEY = "fuelnow:gpsPromptSeen_v2";
 
 export type GpsState = {
   position: LatLon;
@@ -84,7 +83,7 @@ function App() {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [showGpsPrompt, setShowGpsPrompt] = useState(() => {
     try {
-      return !localStorage.getItem(GPS_PROMPT_SEEN_KEY) && !localStorage.getItem(GPS_OPT_OUT_KEY);
+      return !localStorage.getItem(GPS_PROMPT_SEEN_KEY);
     } catch {}
     return true;
   });
@@ -93,6 +92,30 @@ function App() {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const watchIdRef = useRef<number | null>(null);
+
+  const gpsErrorRef = useRef<(err: GeolocationPositionError) => void>((err) => {
+    if (err.code === err.PERMISSION_DENIED) {
+      setGpsError(
+        "Localisation bloquée. Autorisez-la dans les réglages du navigateur (icône 🔒 dans la barre d'adresse → Autoriser la localisation).",
+      );
+    } else if (err.code === err.POSITION_UNAVAILABLE) {
+      setGpsError("Position GPS indisponible. Vérifiez que le GPS de votre appareil est activé.");
+    } else if (err.code === err.TIMEOUT) {
+      setGpsError("Délai d'attente GPS dépassé. Réessayez à l'extérieur ou vérifiez votre signal GPS.");
+    } else {
+      setGpsError("Erreur de géolocalisation.");
+    }
+    setGpsTracking(false);
+  });
+
+  const gpsSuccessRef = useRef<(pos: GeolocationPosition) => void>((pos) => {
+    setGpsError(null);
+    setGps({
+      position: { lat: pos.coords.latitude, lon: pos.coords.longitude },
+      accuracy: pos.coords.accuracy,
+      heading: pos.coords.heading,
+    });
+  });
 
   const { data, loading, error, retry, inBelgium, bePrices, beLoading } = useDebouncedSearch({
     point,
@@ -115,99 +138,48 @@ function App() {
     }
   }, [point?.lat, point?.lon]);
 
-  useEffect(() => {
-    if (!gpsTracking) {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      return;
-    }
-
+  const startGpsTracking = useCallback(() => {
     if (!navigator.geolocation) {
-      setGpsTracking(false);
       setGpsError("Géolocalisation non supportée par ce navigateur");
       return;
     }
+    if (watchIdRef.current !== null) return;
 
     setGpsError(null);
-
-    if (navigator.permissions) {
-      navigator.permissions.query({ name: "geolocation" as PermissionName }).then((result) => {
-        if (result.state === "denied") {
-          setGpsError(
-            "Localisation bloquée. Autorisez-la dans les réglages du navigateur (icône 🔒 dans la barre d'adresse → Autoriser la localisation).",
-          );
-          setGpsTracking(false);
-          try { localStorage.setItem(GPS_OPT_OUT_KEY, "1"); } catch {}
-        }
-      }).catch(() => {});
-    }
-
+    setGpsTracking(true);
     watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        setGpsError(null);
-        setGps({
-          position: { lat: pos.coords.latitude, lon: pos.coords.longitude },
-          accuracy: pos.coords.accuracy,
-          heading: pos.coords.heading,
-        });
-      },
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          setGpsError(
-            "Localisation bloquée. Autorisez-la dans les réglages du navigateur (icône 🔒 dans la barre d'adresse → Autoriser la localisation).",
-          );
-          try { localStorage.setItem(GPS_OPT_OUT_KEY, "1"); } catch {}
-        } else if (err.code === err.POSITION_UNAVAILABLE) {
-          setGpsError("Position GPS indisponible. Vérifiez que le GPS de votre appareil est activé.");
-        } else if (err.code === err.TIMEOUT) {
-          setGpsError("Délai d'attente GPS dépassé. Réessayez à l'extérieur ou vérifiez votre signal GPS.");
-        } else {
-          setGpsError("Erreur de géolocalisation.");
-        }
-        setGpsTracking(false);
-      },
+      gpsSuccessRef.current,
+      gpsErrorRef.current,
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
     );
+  }, []);
 
+  const stopGpsTracking = useCallback(() => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setGpsTracking(false);
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
     };
-  }, [gpsTracking]);
+  }, []);
 
   useEffect(() => {
     const onVisibility = () => {
       if (document.hidden && watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
-      } else if (!document.hidden && gpsTracking && watchIdRef.current === null) {
+      } else if (!document.hidden && gpsTracking && watchIdRef.current === null && navigator.geolocation) {
         watchIdRef.current = navigator.geolocation.watchPosition(
-          (pos) => {
-            setGpsError(null);
-            setGps({
-              position: { lat: pos.coords.latitude, lon: pos.coords.longitude },
-              accuracy: pos.coords.accuracy,
-              heading: pos.coords.heading,
-            });
-          },
-          (err) => {
-            if (err.code === err.PERMISSION_DENIED) {
-              setGpsError(
-                "Localisation bloquée. Autorisez-la dans les réglages du navigateur (icône 🔒 dans la barre d'adresse → Autoriser la localisation).",
-              );
-            } else if (err.code === err.POSITION_UNAVAILABLE) {
-              setGpsError("Position GPS indisponible. Vérifiez que le GPS de votre appareil est activé.");
-            } else if (err.code === err.TIMEOUT) {
-              setGpsError("Délai d'attente GPS dépassé. Réessayez à l'extérieur ou vérifiez votre signal GPS.");
-            } else {
-              setGpsError("Erreur de géolocalisation.");
-            }
-            setGpsTracking(false);
-          },
+          gpsSuccessRef.current,
+          gpsErrorRef.current,
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
         );
       }
@@ -221,28 +193,24 @@ function App() {
   };
 
   const toggleGpsTracking = useCallback(() => {
-    setGpsTracking((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(GPS_OPT_OUT_KEY, next ? "0" : "1");
-      } catch {}
-      if (next) setGpsError(null);
-      return next;
-    });
-  }, []);
+    if (watchIdRef.current !== null) {
+      stopGpsTracking();
+    } else {
+      startGpsTracking();
+    }
+  }, [startGpsTracking, stopGpsTracking]);
 
   const enableGps = useCallback(() => {
     try {
       localStorage.setItem(GPS_PROMPT_SEEN_KEY, "1");
     } catch {}
     setShowGpsPrompt(false);
-    setGpsTracking(true);
-  }, []);
+    startGpsTracking();
+  }, [startGpsTracking]);
 
   const dismissGpsPrompt = useCallback(() => {
     try {
       localStorage.setItem(GPS_PROMPT_SEEN_KEY, "1");
-      localStorage.setItem(GPS_OPT_OUT_KEY, "1");
     } catch {}
     setShowGpsPrompt(false);
   }, []);
