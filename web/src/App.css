@@ -314,6 +314,16 @@
   text-align: center;
 }
 
+/* Offline banner */
+.offline-banner {
+  flex-shrink: 0;
+  padding: 0.4rem 1.25rem;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
 /* Popup */
 .station-popup {
   font-family: system-ui, sans-serif;

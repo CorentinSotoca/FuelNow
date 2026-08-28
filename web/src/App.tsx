@@ -1,6 +1,21 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import { fetchFuels } from "./api";
+
+function useOnlineStatus() {
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+  return online;
+}
 import { BeMaxPricePanel } from "./components/BeMaxPricePanel";
 import { FuelSelect } from "./components/FuelSelect";
 import { MapView } from "./components/MapView";
@@ -25,6 +40,7 @@ function App() {
   const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
   const [hoveredStationId, setHoveredStationId] = useState<number | null>(null);
   const [sheetState, setSheetState] = useState<SheetState>("half");
+  const online = useOnlineStatus();
 
   const { data, loading, error, retry, inBelgium, bePrices, beLoading } = useDebouncedSearch({
     point,
@@ -119,6 +135,9 @@ function App() {
         </div>
 
         <div className="sidebar-results">
+          {!online && (
+            <div className="offline-banner">Mode hors-ligne — données potentiellement anciennes</div>
+          )}
           {point && inBelgium && (
             <BeMaxPricePanel bePrices={bePrices} loading={beLoading} fuel={fuel} />
           )}
