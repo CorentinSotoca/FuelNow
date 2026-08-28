@@ -2,6 +2,8 @@
 
 Trouvez les stations-service les moins chères autour de vous. Carte interactive OpenStreetMap, données carburants mises à jour quotidiennement depuis le flux officiel **Prix des carburants en France – flux instantané v2** (data.economie.gouv.fr).
 
+**Démo en ligne : https://fuelnow.squale.ovh/**
+
 ## Stack
 
 | Couche | Techno |
