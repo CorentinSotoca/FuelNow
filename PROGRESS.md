@@ -1,16 +1,12 @@
 # PROGRESS — FuelNow
 
 ## Où en est-on
-- Étape courante : 10/10 — Finitions
-- Statut : à démarrer
-- Dernière vérif : `docker compose -f docker-compose.prod.yml up -d` → 4 services healthy (db, api, etl, web). Smoke test via nginx:8080 → /health ok, /api/fuels 6 carburants, /api/stations/search 33 stations Paris gazole, SPA fallback 200 OK. ETL supercronic tourne.
+- Étape courante : 10/10 — Finitions ✅
+- Statut : terminé
+- Dernière vérif : 24 tests verts, prod stack 4 services healthy, smoke test nginx:8080 OK (health, fuels, search 33 stations Paris gazole, SPA 200).
 
 ## À faire maintenant (prochaine action concrète)
-1. README.md : architecture, stack, quickstart dev + prod, variables d'env, commandes.
-2. `.dockerignore` pour api/ et web/ (éviter node_modules, .git, etc. dans le build context).
-3. Vérifier que les 24 tests passent toujours.
-4. Smoke test final complet : dev compose + prod compose.
-5. Nettoyage fichiers temporaires éventuels.
+- Rien — projet complet. Évolutions possibles : historique des prix, isochrones OSRM, alertes utilisateur.
 
 ## Contexte minimal indispensable
 - Doc d'architecture : `docs/ARCHITECTURE.md` (à lire avant toute décision).
@@ -53,12 +49,12 @@
 - [x] 7 Frontend carte
 - [x] 8 Frontend résultats
 - [x] 9 Prod compose
-- [ ] 10 Finitions          <-- ici
+- [x] 10 Finitions          ✅
 
 ## Journal (3 dernières entrées)
+- 2026-08-28 — étape 10 : README.md (architecture, quickstart dev+prod, endpoints, env vars, commandes). .dockerignore pour api/ et web/. 24 tests verts. Smoke test prod OK (nginx:8080, 4 services healthy). Projet complet.
 - 2026-08-28 — étape 9 : docker-compose.prod.yml (4 services). api/Dockerfile (user non-root). api/Dockerfile.etl (supercronic + entrypoint.sh). web/Dockerfile (multi-stage Vite → nginx). web/nginx.conf (SPA + proxy /api). 3 pièges supercronic : 6 champs, -no-reap, pas de var subst. Fix TypeScript : erasableSyntaxOnly=false, MapLayerMouseEvent. Smoke test nginx:8080 OK.
 - 2026-08-28 — étape 8 : ResultsList + StationCard + useDebouncedSearch (400 ms). Marqueurs stations sur carte colorés par quartile (step expression avec filtrage doublons). Liaison liste↔carte (hover/clic + popup + flyTo). États : loading/empty (+5 km)/error réseau/429/stale banner. Tri prix|distance. Lien itinéraire OSM. 17/17 Playwright, prix UI = API (2,17 €). 0 erreur console.
-- 2026-08-28 — étape 7 : web/ Vite+React-TS+maplibre-gl v6. MapView (OSM, clic/drag, cercle GeoJSON), FuelSelect, RadiusControl, api.ts, geo.ts. Bug worker maplibre-gl+vite résolu (optimizeDeps.exclude). Vérifié Playwright headless.
 
 ## Points ouverts / blocages
 - (aucun)
