@@ -14,6 +14,7 @@ const DEFAULT_RADIUS_M = 5000;
 const DEFAULT_FUEL: FuelCode = "gazole";
 const MAX_RADIUS_M = 30000;
 const SAVED_POINT_KEY = "fuelnow:lastPosition";
+const GPS_PROMPT_SEEN_KEY = "fuelnow:gpsPromptSeen";
 const GPS_OPT_OUT_KEY = "fuelnow:gpsOptOut";
 
 export type GpsState = {
@@ -78,14 +79,15 @@ function App() {
   const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
   const [hoveredStationId, setHoveredStationId] = useState<number | null>(null);
   const [sheetState, setSheetState] = useState<SheetState>("half");
-  const [gpsTracking, setGpsTracking] = useState(() => {
+  const [gpsTracking, setGpsTracking] = useState(false);
+  const [gps, setGps] = useState<GpsState | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [showGpsPrompt, setShowGpsPrompt] = useState(() => {
     try {
-      return localStorage.getItem(GPS_OPT_OUT_KEY) !== "1";
+      return !localStorage.getItem(GPS_PROMPT_SEEN_KEY) && !localStorage.getItem(GPS_OPT_OUT_KEY);
     } catch {}
     return true;
   });
-  const [gps, setGps] = useState<GpsState | null>(null);
-  const [gpsError, setGpsError] = useState<string | null>(null);
   const online = useOnlineStatus();
 
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -229,6 +231,22 @@ function App() {
     });
   }, []);
 
+  const enableGps = useCallback(() => {
+    try {
+      localStorage.setItem(GPS_PROMPT_SEEN_KEY, "1");
+    } catch {}
+    setShowGpsPrompt(false);
+    setGpsTracking(true);
+  }, []);
+
+  const dismissGpsPrompt = useCallback(() => {
+    try {
+      localStorage.setItem(GPS_PROMPT_SEEN_KEY, "1");
+      localStorage.setItem(GPS_OPT_OUT_KEY, "1");
+    } catch {}
+    setShowGpsPrompt(false);
+  }, []);
+
   const syncToGps = useCallback(() => {
     if (gps) setPoint(gps.position);
   }, [gps]);
@@ -278,6 +296,27 @@ function App() {
 
   return (
     <div className="app-shell">
+      {showGpsPrompt && (
+        <div className="gps-prompt-overlay">
+          <div className="gps-prompt-card">
+            <div className="gps-prompt-icon">📍</div>
+            <h2>Activer la localisation</h2>
+            <p>
+              FuelNow utilise votre position pour trouver les stations-service
+              les moins chères autour de vous. Votre position n'est jamais
+              enregistrée ni transmise à un serveur.
+            </p>
+            <div className="gps-prompt-actions">
+              <button className="gps-prompt-btn gps-prompt-btn-primary" onClick={enableGps}>
+                Autoriser
+              </button>
+              <button className="gps-prompt-btn gps-prompt-btn-secondary" onClick={dismissGpsPrompt}>
+                Plus tard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <MapView
         point={point}
         radiusM={radiusM}

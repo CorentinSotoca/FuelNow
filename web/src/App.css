@@ -1,3 +1,78 @@
+/* ─── GPS permission prompt ─── */
+.gps-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.gps-prompt-card {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem 1.5rem 1.5rem;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  font-family: system-ui, sans-serif;
+}
+
+.gps-prompt-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.gps-prompt-card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.2rem;
+  color: #1f2937;
+}
+
+.gps-prompt-card p {
+  margin: 0 0 1.25rem;
+  font-size: 0.88rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.gps-prompt-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.gps-prompt-btn {
+  padding: 0.7rem 1rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: system-ui, sans-serif;
+}
+
+.gps-prompt-btn-primary {
+  background: #863bff;
+  color: white;
+}
+
+.gps-prompt-btn-primary:active {
+  background: #7330d9;
+}
+
+.gps-prompt-btn-secondary {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.gps-prompt-btn-secondary:active {
+  background: #e5e7eb;
+}
+
 .app-shell {
   position: relative;
   width: 100vw;
