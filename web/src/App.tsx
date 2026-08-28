@@ -80,6 +80,7 @@ function App() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [gpsTracking, setGpsTracking] = useState(false);
   const [gps, setGps] = useState<GpsState | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
   const online = useOnlineStatus();
 
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -118,18 +119,32 @@ function App() {
 
     if (!navigator.geolocation) {
       setGpsTracking(false);
+      setGpsError("Géolocalisation non supportée par ce navigateur");
       return;
     }
 
+    setGpsError(null);
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
+        setGpsError(null);
         setGps({
           position: { lat: pos.coords.latitude, lon: pos.coords.longitude },
           accuracy: pos.coords.accuracy,
           heading: pos.coords.heading,
         });
       },
-      () => {},
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setGpsError("Permission de localisation refusée");
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setGpsError("Position GPS indisponible");
+        } else if (err.code === err.TIMEOUT) {
+          setGpsError("Délai d'attente GPS dépassé");
+        } else {
+          setGpsError("Erreur de géolocalisation");
+        }
+        setGpsTracking(false);
+      },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
     );
 
@@ -149,13 +164,25 @@ function App() {
       } else if (!document.hidden && gpsTracking && watchIdRef.current === null) {
         watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => {
+            setGpsError(null);
             setGps({
               position: { lat: pos.coords.latitude, lon: pos.coords.longitude },
               accuracy: pos.coords.accuracy,
               heading: pos.coords.heading,
             });
           },
-          () => {},
+          (err) => {
+            if (err.code === err.PERMISSION_DENIED) {
+              setGpsError("Permission de localisation refusée");
+            } else if (err.code === err.POSITION_UNAVAILABLE) {
+              setGpsError("Position GPS indisponible");
+            } else if (err.code === err.TIMEOUT) {
+              setGpsError("Délai d'attente GPS dépassé");
+            } else {
+              setGpsError("Erreur de géolocalisation");
+            }
+            setGpsTracking(false);
+          },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
         );
       }
@@ -251,6 +278,7 @@ function App() {
         onStationHover={setHoveredStationId}
         gps={gps}
         gpsTracking={gpsTracking}
+        gpsError={gpsError}
         onToggleGpsTracking={toggleGpsTracking}
         onSyncToGps={syncToGps}
       />

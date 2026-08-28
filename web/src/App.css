@@ -640,6 +640,18 @@
   background: #2563eb;
 }
 
+.gps-error-tooltip {
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  max-width: 200px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-family: system-ui, sans-serif;
+}
+
 /* On mobile, raise controls above the bottom sheet */
 @media (max-width: 768px) {
   .map-controls {

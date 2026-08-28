@@ -46,6 +46,7 @@ interface MapViewProps {
   onStationHover: (id: number | null) => void;
   gps: GpsState | null;
   gpsTracking: boolean;
+  gpsError: string | null;
   onToggleGpsTracking: () => void;
   onSyncToGps: () => void;
 }
@@ -93,6 +94,7 @@ export function MapView({
   onStationHover,
   gps,
   gpsTracking,
+  gpsError,
   onToggleGpsTracking,
   onSyncToGps,
 }: MapViewProps) {
@@ -352,6 +354,9 @@ export function MapView({
     <>
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
       <div className="map-controls">
+        {gpsError && (
+          <div className="gps-error-tooltip">{gpsError}</div>
+        )}
         <button
           className={`map-btn ${gpsTracking ? "map-btn-active" : ""}`}
           onClick={onToggleGpsTracking}
