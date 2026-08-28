@@ -1,6 +1,45 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import { fetchFuels } from "./api";
+import { BeMaxPricePanel } from "./components/BeMaxPricePanel";
+import { FuelSelect } from "./components/FuelSelect";
+import { MapView } from "./components/MapView";
+import { RadiusControl } from "./components/RadiusControl";
+import { ResultsList } from "./components/ResultsList";
+import { useDebouncedSearch } from "./hooks/useDebouncedSearch";
+import type { FuelCode, FuelInfo, LatLon } from "./types";
+import { formatPrice } from "./utils";
+
+const DEFAULT_RADIUS_M = 5000;
+const DEFAULT_FUEL: FuelCode = "gazole";
+const MAX_RADIUS_M = 30000;
+const SAVED_POINT_KEY = "fuelnow:lastPosition";
+
+type SheetState = "collapsed" | "half" | "full";
+
+const SHEET_HEIGHTS: Record<SheetState, number> = {
+  collapsed: 56,
+  half: 0.5, // fraction of vh
+  full: 0.88,
+};
+
+function sheetToPx(state: SheetState): number {
+  if (state === "collapsed") return SHEET_HEIGHTS.collapsed;
+  return Math.round(window.innerHeight * SHEET_HEIGHTS[state]);
+}
+
+function pxToSheet(px: number): SheetState {
+  const collapsed = SHEET_HEIGHTS.collapsed;
+  const half = Math.round(window.innerHeight * 0.5);
+  const full = Math.round(window.innerHeight * 0.88);
+  const diffs: [SheetState, number][] = [
+    ["collapsed", Math.abs(px - collapsed)],
+    ["half", Math.abs(px - half)],
+    ["full", Math.abs(px - full)],
+  ];
+  diffs.sort((a, b) => a[1] - b[1]);
+  return diffs[0][0];
+}
 
 function useOnlineStatus() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -16,23 +55,15 @@ function useOnlineStatus() {
   }, []);
   return online;
 }
-import { BeMaxPricePanel } from "./components/BeMaxPricePanel";
-import { FuelSelect } from "./components/FuelSelect";
-import { MapView } from "./components/MapView";
-import { RadiusControl } from "./components/RadiusControl";
-import { ResultsList } from "./components/ResultsList";
-import { useDebouncedSearch } from "./hooks/useDebouncedSearch";
-import type { FuelCode, FuelInfo, LatLon } from "./types";
-import { formatPrice } from "./utils";
-
-const DEFAULT_RADIUS_M = 5000;
-const DEFAULT_FUEL: FuelCode = "gazole";
-const MAX_RADIUS_M = 30000;
-
-type SheetState = "collapsed" | "half" | "full";
 
 function App() {
-  const [point, setPoint] = useState<LatLon | null>(null);
+  const [point, setPoint] = useState<LatLon | null>(() => {
+    try {
+      const saved = localStorage.getItem(SAVED_POINT_KEY);
+      if (saved) return JSON.parse(saved) as LatLon;
+    } catch {}
+    return null;
+  });
   const [radiusM, setRadiusM] = useState(DEFAULT_RADIUS_M);
   const [fuel, setFuel] = useState<FuelCode>(DEFAULT_FUEL);
   const [fuels, setFuels] = useState<FuelInfo[]>([]);
@@ -40,7 +71,11 @@ function App() {
   const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
   const [hoveredStationId, setHoveredStationId] = useState<number | null>(null);
   const [sheetState, setSheetState] = useState<SheetState>("half");
+  const [geoLoading, setGeoLoading] = useState(false);
   const online = useOnlineStatus();
+
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
   const { data, loading, error, retry, inBelgium, bePrices, beLoading } = useDebouncedSearch({
     point,
@@ -55,20 +90,62 @@ function App() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (point) {
+      try {
+        localStorage.setItem(SAVED_POINT_KEY, JSON.stringify(point));
+      } catch {}
+    }
+  }, [point?.lat, point?.lon]);
+
   const handleExpandRadius = (deltaM: number) => {
     setRadiusM((r) => Math.min(r + deltaM, MAX_RADIUS_M));
   };
 
-  const handleGeolocate = () => {
+  const handleGeolocate = useCallback(() => {
     if (!navigator.geolocation) return;
+    setGeoLoading(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => setPoint({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      () => {},
-      { timeout: 5000 },
+      (pos) => {
+        setPoint({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        setGeoLoading(false);
+      },
+      () => setGeoLoading(false),
+      { timeout: 5000, enableHighAccuracy: true },
     );
+  }, []);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    dragRef.current = {
+      startY: e.touches[0].clientY,
+      startHeight: sidebarRef.current?.offsetHeight ?? sheetToPx(sheetState),
+    };
+    if (sidebarRef.current) {
+      sidebarRef.current.style.transition = "none";
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!dragRef.current || !sidebarRef.current) return;
+    const delta = dragRef.current.startY - e.touches[0].clientY;
+    const newHeight = Math.max(
+      SHEET_HEIGHTS.collapsed,
+      Math.min(dragRef.current.startHeight + delta, window.innerHeight * 0.9),
+    );
+    sidebarRef.current.style.maxHeight = `${newHeight}px`;
+  };
+
+  const handleTouchEnd = () => {
+    if (!dragRef.current || !sidebarRef.current) return;
+    const currentHeight = sidebarRef.current.offsetHeight;
+    sidebarRef.current.style.transition = "";
+    sidebarRef.current.style.maxHeight = "";
+    setSheetState(pxToSheet(currentHeight));
+    dragRef.current = null;
   };
 
   const cycleSheet = () => {
+    if (dragRef.current) return;
     setSheetState((s) => (s === "collapsed" ? "half" : s === "half" ? "full" : "collapsed"));
   };
 
@@ -94,8 +171,17 @@ function App() {
         onStationHover={setHoveredStationId}
       />
 
-      <div className={`sidebar sheet-${sheetState}`}>
-        <div className="sheet-handle" onClick={cycleSheet}>
+      <div
+        ref={sidebarRef}
+        className={`sidebar sheet-${sheetState}`}
+      >
+        <div
+          className="sheet-handle"
+          onClick={cycleSheet}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
           <div className="handle-bar" />
           <div className="sheet-peek">
             {point && inBelgium && bePrices && bePrices.prices.length > 0 ? (
@@ -126,7 +212,7 @@ function App() {
           <div className="controls-header">
             <h1>FuelNow</h1>
             <button className="btn-geolocate" onClick={handleGeolocate} aria-label="Ma position">
-              📍
+              {geoLoading ? <span className="geo-spinner" /> : "📍"}
             </button>
           </div>
           {!point && <p className="hint">Cliquez sur la carte pour choisir un point de recherche.</p>}
