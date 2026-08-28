@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'favicon.ico', 'apple-touch-icon-180x180.png'],
       manifest: {
         name: 'FuelNow — Carburant moins cher autour de vous',
@@ -67,6 +67,9 @@ export default defineConfig({
   // dépendant du worker ne rend jamais). On exclut donc le paquet.
   optimizeDeps: {
     exclude: ['maplibre-gl'],
+  },
+  build: {
+    sourcemap: false,
   },
   server: {
     proxy: {

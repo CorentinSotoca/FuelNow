@@ -1,16 +1,20 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db import get_session
+from app.limiter import limiter
 from app.schemas import BeMaxPriceItem, BeMaxPriceResponse
 
 router = APIRouter()
 
 
 @router.get("/api/be/prices", response_model=BeMaxPriceResponse)
+@limiter.limit(f"{settings.rate_limit_per_min}/minute")
 async def get_be_prices(
-    fuel: str | None = Query(None),
+    request: Request,
+    fuel: str | None = Query(None, pattern="^(gazole|sp95|sp98|e10|e85|gplc)$"),
     session: AsyncSession = Depends(get_session),
 ) -> BeMaxPriceResponse:
     if fuel is not None:

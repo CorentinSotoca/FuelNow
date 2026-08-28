@@ -379,6 +379,32 @@
   color: white;
 }
 
+.results-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 0.75rem 0;
+}
+
+.btn-load-more {
+  padding: 0.5rem 1.5rem;
+  border: 1px solid #2563eb;
+  border-radius: 0.375rem;
+  background: white;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-load-more:hover:not(:disabled) {
+  background: #2563eb;
+  color: white;
+}
+
+.btn-load-more:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* Stale banner */
 .stale-banner {
   flex-shrink: 0;
@@ -538,7 +564,6 @@
     flex-shrink: 0;
     user-select: none;
     -webkit-user-select: none;
-    touch-action: none;
   }
 
   .sheet-handle:active {
@@ -550,6 +575,7 @@
     height: 4px;
     background: #d1d5db;
     border-radius: 2px;
+    touch-action: none;
   }
 
   .sheet-peek {
@@ -720,5 +746,12 @@
   .map-controls {
     bottom: auto;
     top: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

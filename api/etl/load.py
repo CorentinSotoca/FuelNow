@@ -46,7 +46,7 @@ _prices_stg = Table(
 
 async def get_last_run_stats(session: AsyncSession) -> int | None:
     result = await session.execute(
-        text("SELECT rows_stations FROM etl_runs WHERE status='success' ORDER BY finished_at DESC LIMIT 1")
+        text("SELECT rows_stations FROM etl_runs WHERE status='success' AND source='fr' ORDER BY finished_at DESC LIMIT 1")
     )
     row = result.fetchone()
     if row:
@@ -126,5 +126,5 @@ async def load_stations_atomically(
 
 async def purge_etl_runs(session: AsyncSession, days: int = 30) -> None:
     await session.execute(
-        text(f"DELETE FROM etl_runs WHERE started_at < now() - interval '{days} days'")
+        text("DELETE FROM etl_runs WHERE started_at < now() - make_interval(days => :days)").bindparams(days=days)
     )

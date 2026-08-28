@@ -33,6 +33,15 @@ function StationCardInner({
       onClick={() => onSelect(station.id)}
       onMouseEnter={() => onHover(station.id)}
       onMouseLeave={() => onHover(null)}
+      role="button"
+      tabIndex={0}
+      aria-label={`Station ${station.address ?? ""} ${station.postal_code ?? ""} ${station.city ?? ""}, ${formatPrice(station.price_eur)}, ${formatDistance(station.distance_m)}`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(station.id);
+        }
+      }}
     >
       <div className="station-card-rank" style={{ background: color }}>
         {rank}

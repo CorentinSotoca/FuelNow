@@ -60,7 +60,13 @@ class StatbelAdapter:
     async def fetch(cls, url: str, *, timeout: float = 60.0) -> "StatbelAdapter":
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             for attempt in range(3):
-                resp = await client.get(url)
+                try:
+                    resp = await client.get(url)
+                except httpx.TransportError:
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                    raise
                 if resp.status_code == 200:
                     data = resp.json()
                     facts = data.get("facts", []) if isinstance(data, dict) else []
@@ -69,12 +75,12 @@ class StatbelAdapter:
                     await asyncio.sleep(2 ** attempt)
                     continue
                 resp.raise_for_status()
-        return cls([])
+        raise RuntimeError("fetch: unreachable — retries exhausted without response")
 
     def parse(self) -> list[BeMaxPriceRecord]:
         records: list[BeMaxPriceRecord] = []
         for fact in self._facts:
-            product = fact.get("Produit", "").strip()
+            product = (fact.get("Produit") or "").strip()
             fuel_code = STATBEL_PRODUCT_MAP.get(product)
             if fuel_code is None:
                 continue
@@ -87,7 +93,7 @@ class StatbelAdapter:
             except (TypeError, ValueError):
                 continue
 
-            date_raw = fact.get("Jour", "")
+            date_raw = fact.get("Jour") or ""
             price_date = parse_be_date(date_raw)
             if price_date is None:
                 continue

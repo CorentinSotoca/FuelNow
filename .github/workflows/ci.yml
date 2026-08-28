@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check api/
+
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: fuelnow_test
+          POSTGRES_USER: fuelnow
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fuelnow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://fuelnow:testpass@localhost:5432/fuelnow_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e api/[dev]
+      - run: cd api && alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+psycopg2://fuelnow:testpass@localhost:5432/fuelnow_test
+      - run: cd api && pytest tests/ -q
+
+  frontend-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: cd web && npm ci
+      - run: cd web && npx tsc --noEmit
+      - run: cd web && npm run build
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit
+      - run: cd api && pip-audit -r <(pip install -e . --dry-run -q 2>&1 || true) || true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: cd web && npm audit --audit-level=moderate || true
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [backend-lint, backend-tests, frontend-check]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t fuelnow-api ./api
+      - run: docker build -t fuelnow-etl -f api/Dockerfile.etl ./api
+      - run: docker build -t fuelnow-web ./web

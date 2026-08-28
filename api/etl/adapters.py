@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import gzip
 import json
 from datetime import datetime
@@ -53,29 +54,27 @@ class OdsJsonAdapter:
         cls,
         url: str,
         *,
-        etag: str | None = None,
         timeout: float = 120.0,
-    ) -> tuple["OdsJsonAdapter | None", str | None]:
+    ) -> "OdsJsonAdapter":
         headers = {"Accept-Encoding": "gzip"}
-        if etag:
-            headers["If-None-Match"] = etag
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             for attempt in range(3):
-                resp = await client.get(url, headers=headers)
-                if resp.status_code == 304:
-                    return None, etag
+                try:
+                    resp = await client.get(url, headers=headers)
+                except httpx.TransportError:
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                    raise
                 if resp.status_code == 200:
-                    adapter = cls.from_bytes(resp.content)
-                    new_etag = resp.headers.get("etag", etag)
-                    return adapter, new_etag
+                    return cls.from_bytes(resp.content)
                 if resp.status_code >= 500 and attempt < 2:
-                    import asyncio
                     await asyncio.sleep(2 ** attempt)
                     continue
                 resp.raise_for_status()
 
-        return None, etag
+        raise RuntimeError("fetch: unreachable — retries exhausted without response")
 
     @property
     def total_records(self) -> int:

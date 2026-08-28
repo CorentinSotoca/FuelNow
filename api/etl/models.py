@@ -34,7 +34,7 @@ FUEL_FIELD_MAP: dict[str, Fuel] = {
 PRICE_MIN = 0.5
 PRICE_MAX = 5.0
 
-FRANCE_BBOX = (-180.0, -90.0, 180.0, 90.0)
+FRANCE_BBOX = (-65.0, -25.0, 20.0, 55.0)
 
 
 class StationPriceRecord(BaseModel):

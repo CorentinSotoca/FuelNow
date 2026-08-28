@@ -13,7 +13,7 @@ export function circleGeoJSON(center: LatLon, radiusM: number, points = 64): Fea
   for (let i = 0; i <= points; i++) {
     const angle = (i / points) * 2 * Math.PI;
     const dLat = (radiusM * Math.cos(angle)) / earthRadius;
-    const dLon = (radiusM * Math.sin(angle)) / (earthRadius * Math.cos(latRad));
+    const dLon = (radiusM * Math.sin(angle)) / (earthRadius * (Math.cos(latRad) || 1e-10));
     const lat = center.lat + (dLat * 180) / Math.PI;
     const lon = center.lon + (dLon * 180) / Math.PI;
     coords.push([lon, lat]);

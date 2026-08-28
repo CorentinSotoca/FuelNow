@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db import get_session
+from app.limiter import limiter
 from app.schemas import HealthResponse
 from app.status import get_last_success
 
@@ -11,7 +13,8 @@ router = APIRouter()
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health(session: AsyncSession = Depends(get_session)) -> HealthResponse:
+@limiter.limit(f"{settings.rate_limit_per_min}/minute")
+async def health(request: Request, session: AsyncSession = Depends(get_session)) -> HealthResponse:
     last_success_at, stale = await get_last_success(session)
     age_hours = None
     if last_success_at is not None:

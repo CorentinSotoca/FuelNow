@@ -23,21 +23,22 @@ Conséquence : modèle source « wide » (1 colonne par carburant) → l'ETL le 
 ```
                     Internet
                        |
-                 [ traefik / nginx ]  :80/:443  TLS
+           [ Reverse proxy externe ]  :80/:443  TLS
+          (géré hors Docker Compose)
                     /            \
         /  (static)               \  /api/*
    [ web ]                        [ api ]
    nginx + SPA React/Vite         FastAPI (uvicorn)
-   MapLibre GL + OSM raster            |
-                                       | SQL (asyncpg)
-                                       v
+   127.0.0.1:8080                      |
+   MapLibre GL + OSM raster            | SQL (asyncpg)
+                                        v
    [ etl ] --- pull HTTPS --->   [ db ] postgres:16 + PostGIS
    worker Python + cron 06:00          volume pgdata
         |                              |
         +--- upsert transactionnel ----+
 ```
 
-Réseaux Docker : `edge` (proxy ↔ web/api), `backend` (api/etl ↔ db, non exposé).
+Réseau Docker : un seul réseau `backend` (api/etl/web ↔ db). Le conteneur nginx écoute sur `127.0.0.1:8080` en local uniquement ; le reverse proxy externe (géré hors Docker Compose) assure TLS et le routage vers nginx.
 
 ## 3. Choix techno
 
@@ -48,7 +49,7 @@ Réseaux Docker : `edge` (proxy ↔ web/api), `backend` (api/etl ↔ db, non exp
 | ETL | Même image Python, entrypoint CLI (`python -m etl.run`) | Réutilise modèles/session SQLAlchemy, pas de duplication de schéma. |
 | Scheduler | Conteneur `etl` avec cron (ou `supercronic`) `0 6 * * *` | Pas de dépendance externe, redémarrage géré par Docker `restart: unless-stopped`. Alternative : cron hôte appelant `docker compose run --rm etl`. |
 | Frontend | React + Vite + TypeScript + MapLibre GL JS | Bundle statique servi par nginx, aucun runtime Node en prod ; MapLibre = perf sur milliers de marqueurs, style raster OSM ou vecteur. |
-| Proxy | Traefik (ou nginx) | TLS Let's Encrypt auto, un seul point d'entrée, évite tout CORS (même origine). |
+| Proxy | Reverse proxy externe (géré hors Docker Compose) | TLS Let's Encrypt auto, un seul point d'entrée, évite tout CORS (même origine). Le conteneur nginx écoute sur `127.0.0.1:8080` en local uniquement. |
 
 ## 4. Schéma DB
 
@@ -102,7 +103,7 @@ Purge : `DELETE FROM etl_runs WHERE started_at < now() - interval '30 days'` en 
    → jamais d'état partiel visible. (Le swap par `ALTER TABLE ... RENAME` est évité : casse les FK et les vues ; inutile à cette volumétrie.)
 6. **Post** : `ANALYZE`, purge `etl_runs`, log JSON structuré, mise à jour `/health` de l'API via lecture de `etl_runs`.
 
-Observabilité : logs JSON stdout (récupérés par `docker logs` / loki), `GET /health` renvoyant `last_success_at` + `age_hours`, et `stale=true` si > 30 h. Alerting minimal optionnel : appel webhook (Discord/ntfy) si run `failed`.
+Observabilité : logs JSON stdout (récupérés par `docker logs` / loki), `GET /health` renvoyant `last_success_at` + `age_hours`, et `stale=true` si > 26 h. Alerting minimal optionnel : appel webhook (Discord/ntfy) si run `failed`.
 
 ## 6. API
 
@@ -133,11 +134,12 @@ Enveloppe : `{ items, total, page, page_size, data_updated_at, stale }`.
 - `GET /api/fuels` → liste des carburants + libellés (alimente le select).
 - `GET /api/stations/{id}` → détail station (tous carburants, services, horaires bruts).
 - `GET /health` → `{status, last_success_at, age_hours, stale}`.
-- `GET /metrics` (optionnel, prometheus, restreint au réseau interne).
+- `GET /metrics` → Métriques non exposées en v1.
 
 Règles transverses :
 - Validation stricte Pydantic ; 422 sur param hors bornes, 503 si base jamais peuplée.
-- Rate limit `slowapi` : 60 req/min/IP sur `/search` (clé = IP réelle via `X-Forwarded-For` du proxy).
+- Rate limit `slowapi` sur tous les endpoints : 60 req/min/IP (clé = IP réelle via `X-Forwarded-For` du proxy).
+- En-têtes de sécurité (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy) ajoutées par nginx.
 - CORS : désactivé en prod (même origine via proxy) ; `localhost:5173` autorisé en dev.
 - Cache : `Cache-Control: public, max-age=900` + `ETag` sur `/search` ; optionnellement cache applicatif in-process (LRU 500 entrées, TTL 15 min) clé = `(lat,lon arrondis 3 déc., radius, fuel, sort, page)`. Redis non nécessaire à cette échelle.
 - Pas d'auth (données publiques, service en lecture seule).
@@ -167,8 +169,8 @@ Services :
 | `db` | `postgis/postgis:16-3.4` | données | non (réseau `backend`) |
 | `api` | build `./api` (multi-stage python:3.12-slim, venv + uv) | FastAPI/uvicorn | via proxy |
 | `etl` | même image que `api`, command = supercronic | pull 06:00 | non |
-| `web` | build `./web` (stage node:22 build → nginx:alpine) | SPA statique | via proxy |
-| `proxy` | `traefik:v3` | TLS + routage | 80/443 |
+| `web` | build `./web` (stage node:22 build → `nginxinc/nginx-unprivileged`) | SPA statique, nginx non-root sur port 8080 | 127.0.0.1:8080 |
+| `proxy` | Reverse proxy externe (géré hors Docker Compose) | TLS + routage | 80/443 |
 
 Snippet minimal (illustratif) :
 
@@ -187,19 +189,23 @@ services:
     env_file: .env
     depends_on: { db: { condition: service_healthy } }
     healthcheck: { test: ["CMD", "curl", "-fs", "http://localhost:8000/health"] }
-    networks: [backend, edge]
+    networks: [backend]
   etl:
     build: ./api
     command: ["supercronic", "/etc/crontab"]   # 0 6 * * * python -m etl.run
     env_file: .env
     depends_on: { db: { condition: service_healthy } }
     networks: [backend]
+  web:
+    build: ./web
+    depends_on: [api]
+    networks: [backend]
 volumes: { pgdata: {} }
-networks: { backend: { internal: true }, edge: {} }
+networks: { backend: {} }
 ```
 
 Variables d'environnement (`.env`, jamais commité ; `.env.example` versionné) :
-`POSTGRES_DB/USER/PASSWORD`, `DATABASE_URL`, `TZ=Europe/Paris`, `SOURCE_DATASET_URL`, `SOURCE_FORMAT=json`, `ETL_CRON=0 6 * * *`, `ETL_MIN_ROWS=5000`, `RATE_LIMIT_PER_MIN=60`, `SEARCH_RADIUS_MAX_M=30000`, `CACHE_TTL_S=900`, `LOG_LEVEL`, `ALERT_WEBHOOK_URL` (optionnel), `PUBLIC_HOSTNAME`, `ACME_EMAIL`.
+`POSTGRES_DB/USER/PASSWORD`, `DATABASE_URL`, `TZ=Europe/Paris`, `SOURCE_DATASET_URL`, `SOURCE_FORMAT=json`, `ETL_CRON=0 6 * * *`, `ETL_BE_CRON=0 7 * * *`, `ETL_MIN_ROWS=5000`, `RATE_LIMIT_PER_MIN=60`, `SEARCH_RADIUS_MAX_M=30000`, `CACHE_TTL_S=900`, `LOG_LEVEL`, `ALERT_WEBHOOK_URL` (optionnel).
 
 Commandes :
 - `docker compose up -d --build`
@@ -212,12 +218,12 @@ VPS cible : **2 vCPU / 2 Go RAM / 20 Go SSD** suffisent largement (Postgres ~512
 ## 9. Qualité
 
 - **Tests ETL (unitaires)** : fixtures JSON réelles tronquées (~20 stations, dont prix manquants, rupture définitive, `geom` aberrant) → assertions sur dépivot, rejets, garde-fou seuil.
-- **Tests API (intégration)** : `pytest` + `testcontainers` ou service `db` de CI ; jeu de 5 stations connues → vérifier rayon, tri prix, tie-break distance, exclusion rupture, bornes 422, pagination.
+- **Tests API (intégration)** : `pytest` avec un service PostgreSQL GitHub Actions (ou une DB manuelle en local) ; jeu de 5 stations connues → vérifier rayon, tri prix, tie-break distance, exclusion rupture, bornes 422, pagination.
 - **Smoke test post-déploiement** : `/health` non stale + `/api/stations/search?lat=48.85&lon=2.35&radius_m=3000&fuel=gazole` renvoie ≥ 1 item avec prix croissants.
-- **Frontend** : tests composants légers (Vitest) sur formatage prix/distance ; un test e2e Playwright du parcours nominal.
+- **Frontend** : tests frontend non implémentés en v1.
 - **Migrations** : Alembic, `postgis` créé dans la première révision ; migrations idempotentes appliquées à l'entrypoint api.
 - **Secrets** : uniquement variables d'env / `.env` à `chmod 600` sur le VPS ; aucun secret dans l'image ; pas de secret réel dans le repo.
-- **CI** : lint (ruff, eslint), tests, build des images.
+- **CI** : GitHub Actions — jobs `backend-lint` (ruff), `backend-tests` (pytest avec Postgres), `frontend-check` (tsc + build), `security-scan` (pip-audit + npm audit), `docker-build`. Déploiement manuel via `deploy.sh`.
 
 ## 10. Risques & mitigations
 
@@ -254,7 +260,7 @@ Règle absolue : **une étape = un commit + une mise à jour de `PROGRESS.md`**.
 | 6 | Durcissement API | rate limit, ETag/Cache-Control, flag `stale`, logs JSON | `pytest api/tests/test_api_search.py` (bornes, tri, exclusion rupture) |
 | 7 | Frontend carte | Vite + React + MapLibre : carte, point cliquable, cercle rayon, select carburant | `npm run dev` → carte OSM affichée, cercle réactif au slider |
 | 8 | Frontend résultats | `ResultsList`, liaison liste↔marqueurs, états vide/erreur/`stale` | recherche Paris gazole → liste triée cohérente avec `curl` |
-| 9 | Prod compose | services `api`/`etl`/`web`/`proxy`, healthchecks, réseaux `edge`/`backend`, cron 06:00 | `docker compose up -d --build` puis `curl -f https://$PUBLIC_HOSTNAME/health` |
+| 9 | Prod compose | services `api`/`etl`/`web`/`db`, healthchecks, réseau `backend`, cron 06:00 | `docker compose up -d --build` puis `curl -f http://localhost:8080/health` |
 | 10 | Finitions | README déploiement, smoke test scripté, purge `etl_runs`, alerte webhook optionnelle | `./scripts/smoke.sh` vert |
 
 Ordre imposé par les dépendances : 0 → 1 → 2 → 3 → 4 → 5 → 6, et 7 → 8 peuvent démarrer dès l'étape 5 terminée (API contractuelle disponible). 9 exige 6 et 8.
@@ -332,5 +338,5 @@ Copier également la présente doc d'architecture dans `docs/ARCHITECTURE.md` à
 5. 6 carburants figés (gazole, sp95, sp98, e10, e85, gplc) ; un nouveau carburant nécessite une migration d'ENUM.
 6. Ruptures temporaires **et** définitives exclues par défaut des résultats ; horaires et services stockés bruts mais non exploités en v1.
 7. Un seul VPS, pas de HA, downtime de déploiement acceptable.
-8. L'utilisateur gère domaine, DNS et déploiement ; Traefik est une recommandation, un nginx existant peut le remplacer.
+8. L'utilisateur gère domaine, DNS et déploiement ; le reverse proxy externe (géré hors Docker Compose) assure TLS, un nginx existant peut le remplacer.
 9. Le repo suivra la structure `api/` (FastAPI + `etl/`), `web/` (SPA), `docker-compose.yml`, `.env.example`, `docs/`.

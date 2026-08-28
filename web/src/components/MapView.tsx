@@ -19,6 +19,8 @@ setWorkerUrl(workerUrl);
 const FRANCE_CENTER: LatLon = { lat: 46.6, lon: 2.5 };
 const FRANCE_ZOOM = 5.3;
 
+const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 const OSM_STYLE: StyleSpecification = {
   version: 8,
   sources: {
@@ -53,7 +55,7 @@ interface MapViewProps {
 
 function formatPriceLabel(price: number | null): string {
   if (price === null) return "—";
-  return price.toFixed(3).replace(".", ",");
+  return formatPrice(price).replace(" €", "");
 }
 
 function applyStationElStyle(
@@ -104,6 +106,7 @@ export function MapView({
   const gpsMarkerRef = useRef<Marker | null>(null);
   const popupRef = useRef<Popup | null>(null);
   const styleReadyRef = useRef(false);
+  const lastFlyToRef = useRef(0);
   const stationMarkersRef = useRef<Map<number, Marker>>(new Map());
   const callbacksRef = useRef({ onPointChange, onStationClick, onStationHover });
   callbacksRef.current = { onPointChange, onStationClick, onStationHover };
@@ -158,6 +161,7 @@ export function MapView({
     });
 
     return () => {
+      styleReadyRef.current = false;
       popupRef.current?.remove();
       stationMarkersRef.current.forEach((m) => m.remove());
       stationMarkersRef.current.clear();
@@ -197,7 +201,13 @@ export function MapView({
       markerRef.current.setLngLat([point.lon, point.lat]);
     }
 
-    map.flyTo({ center: [point.lon, point.lat], zoom: Math.max(map.getZoom(), 11) });
+    const target = { center: [point.lon, point.lat] as [number, number], zoom: Math.max(map.getZoom(), 11) };
+    if (prefersReducedMotion()) {
+      map.jumpTo(target);
+    } else {
+      lastFlyToRef.current = Date.now();
+      map.flyTo(target);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [point?.lat, point?.lon]);
 
@@ -261,7 +271,13 @@ export function MapView({
       }
 
       if (gpsTracking) {
-        map.easeTo({ center: [position.lon, position.lat] });
+        if (Date.now() - lastFlyToRef.current < 2000) return;
+        const target = { center: [position.lon, position.lat] as [number, number] };
+        if (prefersReducedMotion()) {
+          map.jumpTo(target);
+        } else {
+          map.easeTo(target);
+        }
       }
     };
 
@@ -299,9 +315,19 @@ export function MapView({
         } else {
           const el = document.createElement("div");
           applyStationElStyle(el, station, color, isSel, isHov);
+          el.setAttribute("role", "button");
+          el.setAttribute("tabindex", "0");
+          el.setAttribute("aria-label", `Station ${station.address ?? ""} ${station.postal_code ?? ""} ${station.city ?? ""}, ${formatPrice(station.price_eur)}`);
           el.addEventListener("click", (ev) => {
             ev.stopPropagation();
             callbacksRef.current.onStationClick(station.id);
+          });
+          el.addEventListener("keydown", (ev) => {
+            if (ev.key === "Enter" || ev.key === " ") {
+              ev.preventDefault();
+              ev.stopPropagation();
+              callbacksRef.current.onStationClick(station.id);
+            }
           });
           el.addEventListener("mouseenter", () => {
             callbacksRef.current.onStationHover(station.id);
@@ -332,20 +358,42 @@ export function MapView({
     const station = stations.find((s) => s.id === selectedStationId);
     if (!station) return;
 
-    map.flyTo({
-      center: [station.lon, station.lat],
+    const target = {
+      center: [station.lon, station.lat] as [number, number],
       zoom: Math.max(map.getZoom(), 13),
-    });
+    };
+    if (prefersReducedMotion()) {
+      map.jumpTo(target);
+    } else {
+      map.flyTo(target);
+    }
 
     popupRef.current?.remove();
+
+    const popupContainer = document.createElement("div");
+    popupContainer.className = "station-popup";
+
+    const priceEl = document.createElement("div");
+    priceEl.className = "station-popup-price";
+    priceEl.textContent = formatPrice(station.price_eur);
+    popupContainer.appendChild(priceEl);
+
+    const addrParts = [station.address, [station.postal_code, station.city].filter(Boolean).join(" ")].filter(Boolean);
+    if (addrParts.length > 0) {
+      const addrEl = document.createElement("div");
+      addrEl.className = "station-popup-addr";
+      addrEl.textContent = addrParts.join("\n");
+      popupContainer.appendChild(addrEl);
+    }
+
+    const distEl = document.createElement("div");
+    distEl.className = "station-popup-dist";
+    distEl.textContent = formatDistance(station.distance_m);
+    popupContainer.appendChild(distEl);
+
     popupRef.current = new Popup({ closeButton: false, closeOnClick: true })
       .setLngLat([station.lon, station.lat])
-      .setHTML(`
-        <div class="station-popup">
-          <div class="station-popup-price">${formatPrice(station.price_eur)}</div>
-          ${station.address || station.postal_code || station.city ? `<div class="station-popup-addr">${[station.address, [station.postal_code, station.city].filter(Boolean).join(" ")].filter(Boolean).join("<br>")}</div>` : ""}
-          <div class="station-popup-dist">${formatDistance(station.distance_m)}</div>
-        </div>`)
+      .setDOMContent(popupContainer)
       .addTo(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStationId]);

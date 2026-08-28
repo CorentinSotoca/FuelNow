@@ -34,7 +34,7 @@ export function formatHoursAgo(iso: string | null): string {
   if (!iso) return "";
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
-  const diffMs = Date.now() - then;
+  const diffMs = Math.max(0, Date.now() - then);
   const h = Math.floor(diffMs / 3_600_000);
   if (h < 1) {
     const min = Math.floor(diffMs / 60_000);

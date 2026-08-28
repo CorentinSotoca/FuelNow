@@ -76,18 +76,22 @@ function App() {
   const [radiusM, setRadiusM] = useState<number>(() => {
     try {
       const saved = localStorage.getItem(SAVED_RADIUS_KEY);
-      if (saved) return Number(saved);
+      const n = Number(saved);
+      if (!Number.isNaN(n) && n >= 500 && n <= 30000) return n;
     } catch {}
     return DEFAULT_RADIUS_M;
   });
   const [fuel, setFuel] = useState<FuelCode>(() => {
     try {
-      const saved = localStorage.getItem(SAVED_FUEL_KEY) as FuelCode | null;
-      if (saved) return saved;
+      const saved = localStorage.getItem(SAVED_FUEL_KEY);
+      if (saved && (["gazole", "sp95", "sp98", "e10", "e85", "gplc"] as const).includes(saved as FuelCode)) {
+        return saved as FuelCode;
+      }
     } catch {}
     return DEFAULT_FUEL;
   });
   const [fuels, setFuels] = useState<FuelInfo[]>([]);
+  const [fuelsError, setFuelsError] = useState(false);
   const [sort, setSort] = useState<"price" | "distance">("price");
   const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
   const [hoveredStationId, setHoveredStationId] = useState<number | null>(null);
@@ -105,6 +109,7 @@ function App() {
 
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const justDraggedRef = useRef<boolean>(false);
   const watchIdRef = useRef<number | null>(null);
 
   const gpsErrorRef = useRef<(err: GeolocationPositionError) => void>((err) => {
@@ -131,7 +136,7 @@ function App() {
     });
   });
 
-  const { data, loading, error, retry, inBelgium, bePrices, beLoading } = useDebouncedSearch({
+  const { data, loading, loadingMore, error, retry, loadMore, inBelgium, bePrices, beLoading } = useDebouncedSearch({
     point,
     radiusM,
     fuel,
@@ -141,7 +146,7 @@ function App() {
   useEffect(() => {
     fetchFuels()
       .then(setFuels)
-      .catch(() => {});
+      .catch(() => setFuelsError(true));
   }, []);
 
   useEffect(() => {
@@ -296,9 +301,12 @@ function App() {
     sidebarRef.current.style.maxHeight = "";
     setSheetState(pxToSheet(currentHeight));
     dragRef.current = null;
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 200);
   };
 
   const cycleSheet = () => {
+    if (justDraggedRef.current) return;
     if (dragRef.current) return;
     setSheetState((s) => (s === "collapsed" ? "half" : s === "half" ? "full" : "collapsed"));
   };
@@ -308,9 +316,8 @@ function App() {
     setSheetState("half");
   };
 
-  const cheapestPrice = data?.items?.length
-    ? Math.min(...data.items.map((s) => s.price_eur).filter((p): p is number => p !== null))
-    : null;
+  const prices = data?.items?.map((s) => s.price_eur).filter((p): p is number => p !== null) ?? [];
+  const cheapestPrice = prices.length ? Math.min(...prices) : null;
 
   return (
     <div className="app-shell">
@@ -393,7 +400,11 @@ function App() {
             <h1>FuelNow</h1>
           </div>
           {!point && <p className="hint">Cliquez sur la carte pour choisir un point de recherche.</p>}
-          <FuelSelect fuels={fuels} selected={fuel} onChange={setFuel} />
+          {fuelsError && fuels.length === 0 ? (
+            <p className="hint" role="alert">Impossible de charger la liste des carburants. Vérifiez votre connexion.</p>
+          ) : (
+            <FuelSelect fuels={fuels} selected={fuel} onChange={setFuel} />
+          )}
           <RadiusControl radiusM={radiusM} onChange={setRadiusM} />
         </div>
 
@@ -408,6 +419,7 @@ function App() {
             <ResultsList
               data={data}
               loading={loading}
+              loadingMore={loadingMore}
               error={error}
               selectedStationId={selectedStationId}
               radiusM={radiusM}
@@ -417,6 +429,7 @@ function App() {
               onHoverStation={setHoveredStationId}
               onRetry={retry}
               onExpandRadius={handleExpandRadius}
+              onLoadMore={loadMore}
               inBelgium={inBelgium}
             />
           )}

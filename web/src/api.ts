@@ -7,8 +7,8 @@ export class ApiError extends Error {
   }
 }
 
-export async function fetchFuels(): Promise<FuelInfo[]> {
-  const res = await fetch("/api/fuels");
+export async function fetchFuels(signal?: AbortSignal): Promise<FuelInfo[]> {
+  const res = await fetch("/api/fuels", { signal });
   if (!res.ok) throw new ApiError(res.status, `Failed to load fuels: ${res.status}`);
   return res.json();
 }
@@ -24,7 +24,7 @@ export interface SearchParams {
   pageSize?: number;
 }
 
-export async function searchStations(params: SearchParams): Promise<StationSearchResponse> {
+export async function searchStations(params: SearchParams, signal?: AbortSignal): Promise<StationSearchResponse> {
   const qs = new URLSearchParams({
     lat: String(params.point.lat),
     lon: String(params.point.lon),
@@ -37,7 +37,7 @@ export async function searchStations(params: SearchParams): Promise<StationSearc
     page_size: String(params.pageSize ?? 25),
   });
 
-  const res = await fetch(`/api/stations/search?${qs.toString()}`);
+  const res = await fetch(`/api/stations/search?${qs.toString()}`, { signal });
   if (res.status === 429) {
     throw new ApiError(429, "Trop de requêtes, veuillez patienter quelques instants.");
   }
@@ -50,10 +50,10 @@ export async function searchStations(params: SearchParams): Promise<StationSearc
   return res.json();
 }
 
-export async function fetchBePrices(fuel?: string): Promise<BeMaxPriceResponse> {
+export async function fetchBePrices(fuel?: string, signal?: AbortSignal): Promise<BeMaxPriceResponse> {
   const qs = new URLSearchParams();
   if (fuel) qs.set("fuel", fuel);
-  const res = await fetch(`/api/be/prices?${qs.toString()}`);
+  const res = await fetch(`/api/be/prices?${qs.toString()}`, { signal });
   if (!res.ok) throw new ApiError(res.status, `Failed to load BE prices: ${res.status}`);
   return res.json();
 }

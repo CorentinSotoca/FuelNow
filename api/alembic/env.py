@@ -11,6 +11,7 @@ if config.config_file_name is not None:
 db_url = os.environ.get("DATABASE_URL", "")
 if db_url:
     if "+asyncpg" in db_url:
+        # Alembic ne supporte pas async nativement — on remplace le driver async par psycopg2 (synchrone)
         db_url = db_url.replace("+asyncpg", "+psycopg2")
     config.set_main_option("sqlalchemy.url", db_url)
 

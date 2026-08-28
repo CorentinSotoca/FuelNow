@@ -15,6 +15,18 @@ from app.status import get_last_success
 router = APIRouter()
 
 
+_COUNT_SQL = """
+    WITH filtered AS (
+        SELECT sp.price_eur
+        FROM stations s
+        LEFT JOIN station_prices sp ON sp.station_id = s.id AND sp.fuel = :fuel
+        WHERE ST_DWithin(s.geom, ST_MakePoint(:lon, :lat)::geography, :radius_m)
+          AND (:include_unpriced OR sp.price_eur IS NOT NULL)
+          AND (:include_outage OR COALESCE(sp.outage, 'none') = 'none')
+    )
+    SELECT count(*) AS total, min(price_eur) AS min_price FROM filtered
+"""
+
 _SEARCH_SQL_TEMPLATE = """
     WITH filtered AS (
         SELECT
@@ -34,12 +46,9 @@ _SEARCH_SQL_TEMPLATE = """
         WHERE ST_DWithin(s.geom, ST_MakePoint(:lon, :lat)::geography, :radius_m)
           AND (:include_unpriced OR sp.price_eur IS NOT NULL)
           AND (:include_outage OR COALESCE(sp.outage, 'none') = 'none')
-    ),
-    agg AS (
-        SELECT count(*) AS total, min(price_eur) AS min_price FROM filtered
     )
-    SELECT filtered.*, agg.total, agg.min_price
-    FROM filtered, agg
+    SELECT filtered.*
+    FROM filtered
     ORDER BY {order_by}
     LIMIT :limit OFFSET :offset
 """
@@ -68,6 +77,21 @@ async def search_stations(
     order_by = _ORDER_BY_DISTANCE if sort == "distance" else _ORDER_BY_PRICE
     search_sql = text(_SEARCH_SQL_TEMPLATE.format(order_by=order_by))
 
+    count_result = await session.execute(
+        text(_COUNT_SQL),
+        {
+            "lat": lat,
+            "lon": lon,
+            "radius_m": radius_m,
+            "fuel": fuel,
+            "include_unpriced": include_unpriced,
+            "include_outage": include_outage,
+        },
+    )
+    count_row = count_result.mappings().first()
+    total = count_row["total"] if count_row else 0
+    min_price = count_row["min_price"] if count_row else None
+
     result = await session.execute(
         search_sql,
         {
@@ -82,9 +106,6 @@ async def search_stations(
         },
     )
     rows = result.mappings().all()
-
-    total = rows[0]["total"] if rows else 0
-    min_price = rows[0]["min_price"] if rows else None
 
     items = [
         StationSearchItem(
@@ -110,6 +131,13 @@ async def search_stations(
 
     data_updated_at, stale = await get_last_success(session)
 
+    etag_input = f"{lat}:{lon}:{radius_m}:{fuel}:{include_unpriced}:{include_outage}:{sort}:{page}:{page_size}:{data_updated_at}:{total}"
+    etag = hashlib.md5(etag_input.encode()).hexdigest()
+    cache_control = f"public, max-age={settings.cache_ttl_s}"
+
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": cache_control})
+
     body = StationSearchResponse(
         items=items,
         total=total,
@@ -119,19 +147,18 @@ async def search_stations(
         stale=stale,
     )
 
-    etag = hashlib.md5(body.model_dump_json().encode()).hexdigest()
-    cache_control = f"public, max-age={settings.cache_ttl_s}"
-
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": cache_control})
-
     response.headers["ETag"] = etag
     response.headers["Cache-Control"] = cache_control
     return body
 
 
 @router.get("/api/stations/{station_id}", response_model=StationDetailResponse)
-async def get_station(station_id: int, session: AsyncSession = Depends(get_session)) -> StationDetailResponse:
+@limiter.limit(f"{settings.rate_limit_per_min}/minute")
+async def get_station(
+    request: Request,
+    station_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> StationDetailResponse:
     result = await session.execute(
         text(
             """
