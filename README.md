@@ -1,6 +1,6 @@
 # FuelNow
 
-Trouvez les stations-service les moins chères autour de vous. Carte interactive OpenStreetMap, données carburants mises à jour quotidiennement depuis le flux officiel **Prix des carburants en France – flux instantané v2** (data.economie.gouv.fr).
+Trouvez les stations-service les moins chères autour de vous. Carte interactive OpenStreetMap, données carburants mises à jour quotidiennement depuis le flux officiel **Prix des carburants en France – flux instantané v2** (data.economie.gouv.fr). En zone belge, affichage des prix maximum réglementés depuis **Statbel/be.STAT**.
 
 **Démo en ligne : https://fuelnow.squale.ovh/**
 
@@ -12,7 +12,7 @@ Trouvez les stations-service les moins chères autour de vous. Carte interactive
 |---|---|
 | Base de données | PostgreSQL 16 + PostGIS 3.4 |
 | API | Python 3.12 · FastAPI · SQLAlchemy 2 (async) · asyncpg |
-| ETL | Python · httpx · SQLAlchemy Core · supercronic (cron 06:00) |
+| ETL | Python · httpx · SQLAlchemy Core · supercronic (cron FR 06:00, BE 07:00) |
 | Frontend | React 19 · TypeScript · Vite 8 · MapLibre GL JS v6 |
 | Prod | Docker Compose · nginx (SPA + reverse proxy) |
 
@@ -32,10 +32,13 @@ docker compose run --rm api alembic upgrade head
 # 4. Premier chargement ETL (~10 000 stations)
 docker compose run --rm etl python -m etl.run
 
-# 5. Lancer l'API
+# 5. Premier chargement prix maximum Belgique
+docker compose run --rm etl python -m etl.be_run
+
+# 6. Lancer l'API
 docker compose up -d api
 
-# 6. Lancer le frontend (dev server Vite)
+# 7. Lancer le frontend (dev server Vite)
 cd web && npm install && npm run dev
 # → http://localhost:5173
 ```
@@ -58,7 +61,10 @@ docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 # 4. Premier chargement ETL (~10 000 stations)
 docker compose -f docker-compose.prod.yml run --rm etl python -m etl.run
 
-# 5. Lancer l'API et le frontend
+# 5. Premier chargement prix maximum Belgique
+docker compose -f docker-compose.prod.yml run --rm etl python -m etl.be_run
+
+# 6. Lancer l'API et le frontend
 docker compose -f docker-compose.prod.yml up -d api web
 ```
 
@@ -83,7 +89,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 ```
 
-Les migrations ne font rien si le schéma est déjà à jour. L'ETL continue de tourner automatiquement à 06h00 via supercronic.
+Les migrations ne font rien si le schéma est déjà à jour. L'ETL FR continue de tourner automatiquement à 06h00 via supercronic, et l'ETL BE à 07h00.
 
 ### Vérifier que la mise à jour s'est bien passée
 
@@ -126,7 +132,11 @@ Aucune migration ni redémarrage de l'API nécessaire.
 ### Forcer un rechargement ETL manuellement
 
 ```bash
+# ETL France (stations-service)
 docker compose -f docker-compose.prod.yml run --rm etl python -m etl.run
+
+# ETL Belgique (prix maximum officiels)
+docker compose -f docker-compose.prod.yml run --rm etl python -m etl.be_run
 ```
 
 ## Architecture
@@ -158,6 +168,7 @@ docker compose -f docker-compose.prod.yml run --rm etl python -m etl.run
 | `GET /api/fuels` | Liste des 6 carburants |
 | `GET /api/stations/search` | Recherche par rayon (`lat`, `lon`, `radius_m`, `fuel`, `sort`, pagination) |
 | `GET /api/stations/{id}` | Détail d'une station (tous carburants, services, horaires) |
+| `GET /api/be/prices` | Prix maximum officiels Belgique (filtre optionnel `fuel`) |
 
 ## Variables d'environnement
 
@@ -168,7 +179,9 @@ docker compose -f docker-compose.prod.yml run --rm etl python -m etl.run
 | `POSTGRES_PASSWORD` | `changeme` | Mot de passe DB |
 | `DATABASE_URL` | — | URL SQLAlchemy async (obligatoire, à construire manuellement) |
 | `SOURCE_DATASET_URL` | — | URL du dataset ODS (export JSON gzip) |
-| `ETL_CRON` | `0 6 * * *` | Schedule cron (format 5 champs, supercronic ajoute les secondes) |
+| `ETL_CRON` | `0 6 * * *` | Schedule cron ETL France (format 5 champs, supercronic ajoute les secondes) |
+| `ETL_BE_CRON` | `0 7 * * *` | Schedule cron ETL Belgique |
+| `STATBEL_API_URL` | URL par défaut | URL de l'API Statbel pour les prix maximum belges |
 | `ETL_MIN_ROWS` | `5000` | Seuil minimum absolu de stations |
 | `ETL_MIN_RATIO` | `0.8` | Ratio minimum vs dernier run réussi |
 | `RATE_LIMIT_PER_MIN` | `60` | Requêtes/min/IP sur `/search` |
@@ -187,6 +200,7 @@ docker compose run --rm api pytest tests/ -q
 
 # ETL manuel
 docker compose run --rm etl python -m etl.run
+docker compose run --rm etl python -m etl.be_run
 
 # Logs ETL
 docker compose logs -f etl
@@ -202,3 +216,5 @@ Gazole · SP95 · SP98 · E10 · E85 · GPLc
 ## Source des données
 
 [Prix des carburants en France – flux instantané v2](https://data.economie.gouv.fr/explore/dataset/prix-des-carburants-en-france-flux-instantane-v2/) — data.economie.gouv.fr / Opendatasoft. Cartes © OpenStreetMap contributors.
+
+Prix maximum officiels Belgique : [Statbel/be.STAT](https://bestat.statbel.fgov.be/bestat/api/views/9e9cf394-6c54-4d81-8013-7124a8c4bf15/result/JSON).
