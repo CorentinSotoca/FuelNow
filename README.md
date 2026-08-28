@@ -156,9 +156,10 @@ docker compose -f docker-compose.prod.yml run --rm etl python -m etl.be_run
     supercronic 06:00              volume pgdata
 ```
 
-- **ETL** : fetch gzip JSON → validation Pydantic → dépivot 6 carburants → garde-fou (80% du dernier run) → staging tables → `TRUNCATE`+`INSERT` atomique.
+- **ETL** : fetch gzip JSON → validation Pydantic → dépivot 6 carburants → garde-fou (80% du dernier run) → staging tables → `TRUNCATE`+`INSERT` atomique. Un second ETL récupère les prix maximum officiels belges (Statbel) via UPSERT.
 - **API** : `ST_DWithin` + `ST_Distance` sur `geography` (index GiST). Rate limit 60/min/IP, ETag + Cache-Control 900s.
 - **Frontend** : debounce 400ms, marqueurs HTML colorés par quartile de prix avec prix affiché directement sur la carte, liaison liste↔carte, popup, itinéraire via URI `geo:` (app de maps par défaut). Responsive mobile : bottom sheet 3 positions, bouton géoloc.
+- **Belgique** : pas d'open data par station en Belgique. À proximité de la frontière (~20 km), un panneau affiche les prix maximum réglementés (Statbel) à côté des stations françaises frontalières (affichage hybride). La détection utilise un polygone qui suit la frontière, pas une bbox rectangulaire (pour exclure Arras, Cambrai, etc.).
 
 ## Endpoints API
 

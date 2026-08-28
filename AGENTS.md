@@ -43,7 +43,7 @@ web/                  SPA React + Vite
     hooks/            useDebouncedSearch (400ms, race-condition safe, détection zone BE)
     api.ts            Client API (ApiError, fetchFuels, searchStations, fetchBePrices)
     types.ts          Types TypeScript
-    utils.ts          Quartiles, formatage prix/distance/MAJ, isInBelgium, formatBeDate
+    utils.ts          Quartiles, formatage prix/distance/MAJ, isNearBelgium (polygone), formatBeDate
     geo.ts            Génération cercle GeoJSON
 docs/ARCHITECTURE.md  Architecture technique détaillée
 docker-compose.yml    Dev (db, api, etl)
@@ -58,6 +58,7 @@ docker-compose.prod.yml  Prod (db, api, etl, web)
 docker compose up -d db
 docker compose run --rm api alembic upgrade head
 docker compose run --rm etl python -m etl.run
+docker compose run --rm etl python -m etl.be_run
 docker compose up -d api
 cd web && npm install && npm run dev   # → localhost:5173
 
@@ -105,6 +106,8 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 - Belgique : pas d'open data par station, seuls les prix maximum réglementés (Statbel) sont affichés.
 - `etl_runs.source` distingue les runs FR (`source='fr'`) des runs BE (`source='be'`).
 - `be_max_prices.fuel_code` est un TEXT simple, indépendant de l'ENUM `fuel_type`.
+- Belgique : affichage hybride — les stations FR frontalières restent visibles, le panneau BE s'affiche en plus.
+- Détection zone belge : `isNearBelgium()` dans `utils.ts` utilise un **polygone** (ray-casting) qui suit la frontière franco-belge + ~20 km de tampon côté français, **pas** une bbox rectangulaire (une bbox inclurait faussement Arras, Cambrai, etc.).
 
 ## Pièges et gotchas
 
@@ -131,6 +134,7 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 - **Marqueurs HTML MapLibre** : ne **pas** mettre `transform: translate(-50%,-50%)` dans le style de l'élément — MapLibre gère lui-même le positionnement. Ne **pas** utiliser `replaceWith` pour mettre à jour un marker — appliquer les styles in-place sur `marker.getElement()` via `applyStationElStyle`.
 - **TypeScript** : `erasableSyntaxOnly: false` dans `tsconfig.app.json` (bloque les classes avec param properties comme ApiError).
 - Classes CSS popup en maplibre-gl v6 : préfixées `maplibregl-` (pas `maplibre-`).
+- **Zone belge** : `isNearBelgium(lat, lon)` dans `utils.ts` utilise un polygone (algorithme du ray-casting) qui suit la frontière franco-belge + ~20 km de tampon côté français. Une bbox rectangulaire ne fonctionne pas car elle inclurait des villes françaises éloignées de la frontière (Arras, Cambrai, Béthune, Lens, Douai). Le polygone exclut ces villes tout en incluant Lille, Valenciennes, Maubeuge, Dunkerque, Hirson, Givet. Quand `isNearBelgium` est vrai, le hook `useDebouncedSearch` fetch les prix BE via `GET /api/be/prices` et `BeMaxPricePanel` s'affiche en haut des résultats. Les stations FR frontalières restent visibles (affichage hybride).
 
 ### Supercronic (ETL)
 
