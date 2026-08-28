@@ -1,8 +1,9 @@
-from sqlalchemy import BigInteger, Enum, ForeignKey, Integer, Numeric, Text, TIMESTAMP, func
+from datetime import datetime
+
+from geoalchemy2 import Geography
+from sqlalchemy import TIMESTAMP, BigInteger, Enum, ForeignKey, Integer, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from geoalchemy2 import Geography
-from datetime import datetime
 
 FUEL_TYPES = ("gazole", "sp95", "sp98", "e10", "e85", "gplc")
 OUTAGE_TYPES = ("none", "temporary", "definitive")

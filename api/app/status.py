@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,6 @@ async def get_last_success(session: AsyncSession) -> tuple[datetime | None, bool
     if not row or row[0] is None:
         return None, True
     finished_at = row[0]
-    age_hours = (datetime.now(timezone.utc) - finished_at).total_seconds() / 3600
+    age_hours = (datetime.now(UTC) - finished_at).total_seconds() / 3600
     stale = age_hours > STALE_THRESHOLD_HOURS
     return finished_at, stale

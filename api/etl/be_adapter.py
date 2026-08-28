@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 import httpx
@@ -57,7 +57,7 @@ class StatbelAdapter:
         self._facts = facts
 
     @classmethod
-    async def fetch(cls, url: str, *, timeout: float = 60.0) -> "StatbelAdapter":
+    async def fetch(cls, url: str, *, timeout: float = 60.0) -> StatbelAdapter:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             for attempt in range(3):
                 try:

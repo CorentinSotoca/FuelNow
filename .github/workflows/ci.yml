@@ -40,7 +40,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e api/[dev]
+      - run: pip install -e "api/[dev]"
       - run: cd api && alembic upgrade head
         env:
           DATABASE_URL: postgresql+psycopg2://fuelnow:testpass@localhost:5432/fuelnow_test

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -24,7 +24,7 @@ BE_TEST_PRICES = [
 
 @pytest.fixture()
 async def seeded_be_prices():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with async_session() as session:
         for fuel_code, product_label, price_eur, price_date in BE_TEST_PRICES:
             await session.execute(

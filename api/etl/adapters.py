@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+from collections.abc import Iterator
 from datetime import datetime
-from typing import Any, Iterator, Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -42,7 +43,7 @@ class OdsJsonAdapter:
         self._rejected = 0
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "OdsJsonAdapter":
+    def from_bytes(cls, data: bytes) -> OdsJsonAdapter:
         try:
             decompressed = gzip.decompress(data)
         except (gzip.BadGzipFile, OSError):
@@ -55,7 +56,7 @@ class OdsJsonAdapter:
         url: str,
         *,
         timeout: float = 120.0,
-    ) -> "OdsJsonAdapter":
+    ) -> OdsJsonAdapter:
         headers = {"Accept-Encoding": "gzip"}
 
         async with httpx.AsyncClient(timeout=timeout) as client:

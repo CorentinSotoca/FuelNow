@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,7 @@ async def health(request: Request, session: AsyncSession = Depends(get_session))
     last_success_at, stale = await get_last_success(session)
     age_hours = None
     if last_success_at is not None:
-        age_hours = (datetime.now(timezone.utc) - last_success_at).total_seconds() / 3600
+        age_hours = (datetime.now(UTC) - last_success_at).total_seconds() / 3600
     return HealthResponse(
         status="ok",
         last_success_at=last_success_at,

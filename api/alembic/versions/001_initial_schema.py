@@ -4,10 +4,11 @@ Revision ID: 001
 Revises:
 Create Date: 2026-08-28
 """
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from geoalchemy2 import Geography
+from sqlalchemy.dialects.postgresql import ENUM, JSONB
+
+from alembic import op
 
 revision = "001"
 down_revision = None

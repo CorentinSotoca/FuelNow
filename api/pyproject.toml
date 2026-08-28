@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "fuelnow-api"
 version = "0.1.0"
@@ -33,3 +37,12 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py312"
 line-length = 120
+
+[tool.ruff.lint]
+ignore = [
+    "B008",  # Depends() in defaults is standard FastAPI pattern
+    "BLE001",  # Blind except in ETL parse is intentional
+]
+
+[tool.setuptools]
+packages = ["app", "app.routes", "etl"]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -58,8 +58,8 @@ async def test_check_guardrail_min_rows_reject():
 
 
 async def test_get_last_run_stats_filters_by_source_fr():
-    ts_be = datetime(2099, 1, 2, tzinfo=timezone.utc)
-    ts_fr = datetime(2099, 1, 1, tzinfo=timezone.utc)
+    ts_be = datetime(2099, 1, 2, tzinfo=UTC)
+    ts_fr = datetime(2099, 1, 1, tzinfo=UTC)
     inserted_ids: list[int] = []
 
     async with async_session() as session:
@@ -138,7 +138,7 @@ async def test_load_stations_atomically_replaces_data():
                     StationPriceRecord(
                         fuel=Fuel.gazole,
                         price_eur=1.200,
-                        price_maj=datetime.now(timezone.utc),
+                        price_maj=datetime.now(UTC),
                         outage=Outage.none,
                     ),
                 ],

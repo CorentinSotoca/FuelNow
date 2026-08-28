@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import text
@@ -24,7 +24,7 @@ logger = structlog.get_logger("etl")
 
 
 async def run_etl() -> None:
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     logger.info("etl_started")
 
     run_id = await create_run(started_at, source="fr")
@@ -49,7 +49,7 @@ async def run_etl() -> None:
         if not ok:
             msg = f"Guardrail failed: {count} stations below threshold"
             logger.error("guardrail_failed", count=count)
-            await update_run(run_id, "failed", error=msg, finished_at=datetime.now(timezone.utc))
+            await update_run(run_id, "failed", error=msg, finished_at=datetime.now(UTC))
             await send_alert(msg, label="ETL")
             return
 
@@ -66,12 +66,12 @@ async def run_etl() -> None:
                 "success",
                 rows_stations=rows_st,
                 rows_prices=rows_pr,
-                finished_at=datetime.now(timezone.utc),
+                finished_at=datetime.now(UTC),
             )
 
     except Exception as e:
-        logger.error("etl_failed", error=str(e), exc_info=True)
-        await update_run(run_id, "failed", error=str(e), finished_at=datetime.now(timezone.utc))
+        logger.exception("etl_failed", error=str(e))
+        await update_run(run_id, "failed", error=str(e), finished_at=datetime.now(UTC))
         await send_alert(str(e), label="ETL")
         sys.exit(1)
 

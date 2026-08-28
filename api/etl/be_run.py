@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import text
@@ -24,7 +24,7 @@ logger = structlog.get_logger("etl.be")
 
 
 async def run_be_etl() -> None:
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     logger.info("be_etl_started")
 
     run_id = await create_run(started_at, source="be")
@@ -39,7 +39,7 @@ async def run_be_etl() -> None:
         if count == 0:
             msg = "No BE max price records parsed"
             logger.error("be_parse_empty")
-            await update_run(run_id, "failed", error=msg, finished_at=datetime.now(timezone.utc))
+            await update_run(run_id, "failed", error=msg, finished_at=datetime.now(UTC))
             await send_alert(msg, label="BE ETL")
             return
 
@@ -51,18 +51,18 @@ async def run_be_etl() -> None:
                 run_id,
                 "success",
                 rows_prices=rows_inserted,
-                finished_at=datetime.now(timezone.utc),
+                finished_at=datetime.now(UTC),
             )
 
     except Exception as e:
-        logger.error("be_etl_failed", error=str(e), exc_info=True)
-        await update_run(run_id, "failed", error=str(e), finished_at=datetime.now(timezone.utc))
+        logger.exception("be_etl_failed", error=str(e))
+        await update_run(run_id, "failed", error=str(e), finished_at=datetime.now(UTC))
         await send_alert(str(e), label="BE ETL")
         sys.exit(1)
 
 
 async def _upsert_prices(session: AsyncSession, records: list) -> int:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     rows = 0
     for rec in records:
         result = await session.execute(

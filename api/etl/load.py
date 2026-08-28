@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import insert, text, Table, Column, BigInteger, Text, Numeric, TIMESTAMP, MetaData
-from sqlalchemy.dialects.postgresql import JSONB, ENUM as PG_ENUM
 from geoalchemy2 import Geography
+from sqlalchemy import TIMESTAMP, BigInteger, Column, MetaData, Numeric, Table, Text, insert, text
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from etl.models import StationRecord
 from app.models import FUEL_TYPES, OUTAGE_TYPES
+from etl.models import StationRecord
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ async def load_stations_atomically(
             "geom": f"SRID=4326;POINT({s.lon} {s.lat})",
             "services": s.services,
             "opening_hours": s.opening_hours,
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         })
 
     for i in range(0, len(station_rows), batch_size):

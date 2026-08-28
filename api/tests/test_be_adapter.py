@@ -4,7 +4,6 @@ import pytest
 
 from etl.be_adapter import StatbelAdapter, parse_be_date
 
-
 SAMPLE_FACTS = [
     {"Produit": "Diesel B7 (€/L)", "Prix TVA incl.": 1.732, "Jour": "28AUG26", "Groupe de produits": "Carburants"},
     {"Produit": "Essence 95 RON E5 (€/L)", "Prix TVA incl.": 1.789, "Jour": "28AUG26", "Groupe de produits": "Carburants"},
