@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     source_dataset_url: str = ""
     source_format: str = "json"
     etl_cron: str = "0 6 * * *"
+    etl_be_cron: str = "0 7 * * *"
     etl_min_rows: int = 5000
     etl_min_ratio: float = 0.8
     rate_limit_per_min: int = 60
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     alert_webhook_url: str = ""
     cors_allow_origins: str = ""
+    statbel_api_url: str = "https://bestat.economie.fgov.be/bestat/api/views/9e9cf394-6c54-4d81-8013-7124a8c4bf15/result/JSON"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

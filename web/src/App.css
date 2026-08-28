@@ -338,6 +338,57 @@
   margin-top: 0.1rem;
 }
 
+/* ─── BE max price panel ─── */
+.be-max-price-panel {
+  flex-shrink: 0;
+  margin: 0.5rem 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid #fbbf24;
+  border-radius: 0.5rem;
+  background: #fffbeb;
+}
+
+.be-panel-header {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #92400e;
+  margin-bottom: 0.4rem;
+}
+
+.be-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.be-panel-fuel {
+  font-size: 0.8rem;
+  color: #555;
+}
+
+.be-panel-price {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1e40af;
+}
+
+.be-panel-date {
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+.be-panel-unavailable {
+  font-size: 0.82rem;
+  color: #92400e;
+  margin: 0;
+}
+
+.be-panel-loading {
+  font-size: 0.82rem;
+  color: #9ca3af;
+  margin: 0;
+}
+
 /* ─── Controls header (desktop) ─── */
 .controls-header {
   display: flex;

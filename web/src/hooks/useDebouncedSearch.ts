@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, searchStations } from "../api";
-import type { FuelCode, LatLon, StationSearchResponse } from "../types";
+import { ApiError, fetchBePrices, searchStations } from "../api";
+import type { BeMaxPriceResponse, FuelCode, LatLon, StationSearchResponse } from "../types";
+import { isInBelgium } from "../utils";
 
 export type SearchErrorKind = "rate_limit" | "network" | "server" | "invalid";
 
@@ -36,7 +37,11 @@ export function useDebouncedSearch({
   const [data, setData] = useState<StationSearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<SearchError | null>(null);
+  const [bePrices, setBePrices] = useState<BeMaxPriceResponse | null>(null);
+  const [beLoading, setBeLoading] = useState(false);
   const reqIdRef = useRef(0);
+
+  const inBelgium = point ? isInBelgium(point.lat, point.lon) : false;
 
   const execute = useCallback(
     async (p: LatLon, r: number, f: FuelCode, s: "price" | "distance") => {
@@ -68,9 +73,22 @@ export function useDebouncedSearch({
     return () => clearTimeout(timer);
   }, [point?.lat, point?.lon, radiusM, fuel, sort, debounceMs, point, execute]);
 
+  useEffect(() => {
+    if (!inBelgium) {
+      setBePrices(null);
+      setBeLoading(false);
+      return;
+    }
+    setBeLoading(true);
+    fetchBePrices()
+      .then(setBePrices)
+      .catch(() => setBePrices(null))
+      .finally(() => setBeLoading(false));
+  }, [inBelgium]);
+
   const retry = useCallback(() => {
     if (point) execute(point, radiusM, fuel, sort);
   }, [point, radiusM, fuel, sort, execute]);
 
-  return { data, loading, error, retry };
+  return { data, loading, error, retry, inBelgium, bePrices, beLoading };
 }

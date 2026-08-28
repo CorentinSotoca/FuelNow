@@ -33,3 +33,15 @@ export interface StationSearchResponse {
   data_updated_at: string | null;
   stale: boolean;
 }
+
+export interface BeMaxPrice {
+  fuel_code: string;
+  product_label: string;
+  price_eur: number;
+  price_date: string;
+}
+
+export interface BeMaxPriceResponse {
+  prices: BeMaxPrice[];
+  fetched_at: string | null;
+}

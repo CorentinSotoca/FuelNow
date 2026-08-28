@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-FuelNow est une application web dockerisée qui permet de trouver les stations-service les moins chères autour d'un point donné. Données carburants rafraîchies quotidiennement depuis le flux officiel **Prix des carburants en France – flux instantané v2** (data.economie.gouv.fr / Opendatasoft).
+FuelNow est une application web dockerisée qui permet de trouver les stations-service les moins chères autour d'un point donné. Données carburants rafraîchies quotidiennement depuis le flux officiel **Prix des carburants en France – flux instantané v2** (data.economie.gouv.fr / Opendatasoft). En zone belge, affichage des prix maximum réglementés depuis **Statbel/be.STAT**.
 
 ## Stack
 
@@ -10,7 +10,7 @@ FuelNow est une application web dockerisée qui permet de trouver les stations-s
 |---|---|
 | Base de données | PostgreSQL 16 + PostGIS 3.4 |
 | API | Python 3.12 · FastAPI · SQLAlchemy 2 (async) · asyncpg |
-| ETL | Python · httpx · SQLAlchemy Core · supercronic (cron 06:00) |
+| ETL | Python · httpx · SQLAlchemy Core · supercronic (cron FR 06:00, BE 07:00) |
 | Frontend | React 19 · TypeScript · Vite 8 · MapLibre GL JS v6 |
 | Prod | Docker Compose · nginx (SPA + reverse proxy) |
 
@@ -19,29 +19,31 @@ FuelNow est une application web dockerisée qui permet de trouver les stations-s
 ```
 api/                  FastAPI + ETL (même image Python)
   app/                Application FastAPI
-    routes/           health, fuels, stations
+    routes/           health, fuels, stations, be
     config.py         Settings (env vars)
     db.py             Engine SQLAlchemy async
     limiter.py        Rate limit slowapi
     schemas.py        Pydantic models
-    status.py         last_success_at / stale (seuil 26h)
+    status.py         last_success_at / stale (seuil 26h, filtré par source='fr')
   etl/                Pipeline ETL
     adapters.py       OdsJsonAdapter (fetch + dépivot)
+    be_adapter.py     StatbelAdapter (fetch + parse prix max BE)
     models.py         StationRecord, StationPriceRecord, Fuel, Outage
     load.py           staging tables + TRUNCATE/INSERT atomique
-    run.py            Orchestrateur + etl_runs
-    entrypoint.sh     supercronic (-no-reap, génère crontab au runtime)
-  tests/              24 tests (13 ETL parse + 11 API search)
+    run.py            Orchestrateur FR + etl_runs (source='fr')
+    be_run.py         Orchestrateur BE + etl_runs (source='be')
+    entrypoint.sh     supercronic (-no-reap, génère crontab au runtime, 2 entries FR+BE)
+  tests/              Tests (13 ETL parse + 11 API search + 10 BE adapter + 5 BE API)
   alembic/            Migrations
 web/                  SPA React + Vite
   src/
     App.tsx           Layout (sidebar + map + bottom sheet mobile)
     App.css           Tous les styles (incl. responsive @media 768px)
-    components/       MapView, FuelSelect, RadiusControl, ResultsList, StationCard
-    hooks/            useDebouncedSearch (400ms, race-condition safe)
-    api.ts            Client API (ApiError, fetchFuels, searchStations)
+    components/       MapView, FuelSelect, RadiusControl, ResultsList, StationCard, BeMaxPricePanel
+    hooks/            useDebouncedSearch (400ms, race-condition safe, détection zone BE)
+    api.ts            Client API (ApiError, fetchFuels, searchStations, fetchBePrices)
     types.ts          Types TypeScript
-    utils.ts          Quartiles, formatage prix/distance/MAJ
+    utils.ts          Quartiles, formatage prix/distance/MAJ, isInBelgium, formatBeDate
     geo.ts            Génération cercle GeoJSON
 docs/ARCHITECTURE.md  Architecture technique détaillée
 docker-compose.yml    Dev (db, api, etl)
@@ -60,7 +62,7 @@ docker compose up -d api
 cd web && npm install && npm run dev   # → localhost:5173
 
 # Tests
-docker compose run --rm api pytest tests/ -q   # 24 tests
+docker compose run --rm api pytest tests/ -q   # 39 tests
 
 # Prod
 docker compose -f docker-compose.prod.yml up -d --build db
@@ -86,10 +88,11 @@ cd web && npx tsc --noEmit
 | `GET /api/fuels` | Liste des 6 carburants |
 | `GET /api/stations/search` | Recherche par rayon (`lat`, `lon`, `radius_m`, `fuel`, `sort`, pagination) |
 | `GET /api/stations/{id}` | Détail d'une station |
+| `GET /api/be/prices` | Prix maximum officiels Belgique (filtre optionnel `fuel`) |
 
 ## Variables d'environnement
 
-Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obligatoire, à construire manuellement), `SOURCE_DATASET_URL`, `CORS_ALLOW_ORIGINS`, `ETL_CRON`, `WEB_PORT`.
+Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obligatoire, à construire manuellement), `SOURCE_DATASET_URL`, `STATBEL_API_URL`, `CORS_ALLOW_ORIGINS`, `ETL_CRON`, `ETL_BE_CRON`, `WEB_PORT`.
 
 ## Décisions figées
 
@@ -99,6 +102,9 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 - 6 carburants : gazole, sp95, sp98, e10, e85, gplc.
 - Prix bornés [0.5, 5.0] € ; geom hors bbox France rejeté.
 - ENUMs créés manuellement dans la migration (postgresql.ENUM avec `create_type=False`).
+- Belgique : pas d'open data par station, seuls les prix maximum réglementés (Statbel) sont affichés.
+- `etl_runs.source` distingue les runs FR (`source='fr'`) des runs BE (`source='be'`).
+- `be_max_prices.fuel_code` est un TEXT simple, indépendant de l'ENUM `fuel_type`.
 
 ## Pièges et gotchas
 
@@ -131,14 +137,17 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 1. Format crontab = **6 champs** (sec min hour dom mon dow), pas 5 → `entrypoint.sh` préfixe "0 " si 5 champs.
 2. supercronic en PID 1 crash sur "Failed to fork exec" → flag **`-no-reap`**.
 3. Pas de substitution de variables d'env dans le crontab → `entrypoint.sh` génère le fichier au runtime.
+4. Deux entries : FR (`etl.run`) et BE (`etl.be_run`).
 
 ### Responsive mobile
 
 - Bottom sheet 3 positions : `collapsed` / `half` / `full` (handle cliquable pour cycler).
-- Résumé peek en mode replié : nb stations + prix min.
+- Résumé peek en mode replié : nb stations + prix min (ou prix max BE si en zone belge).
 - Bouton géoloc 📍 pour se positionner sans cliquer sur la carte.
 - `@media (max-width: 768px)` dans `App.css`.
 
 ## Source des données
 
 [Prix des carburants en France – flux instantané v2](https://data.economie.gouv.fr/explore/dataset/prix-des-carburants-en-france-flux-instantane-v2/) — data.economie.gouv.fr / Opendatasoft. Cartes © OpenStreetMap contributors.
+
+Prix maximum officiels Belgique : [Statbel/be.STAT](https://bestat.economie.fgov.be/bestat/api/views/9e9cf394-6c54-4d81-8013-7124a8c4bf15/result/JSON).

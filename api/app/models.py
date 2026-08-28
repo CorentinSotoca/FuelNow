@@ -50,3 +50,4 @@ class EtlRun(Base):
     rows_prices: Mapped[int | None] = mapped_column(Integer)
     source_bytes: Mapped[int | None] = mapped_column(BigInteger)
     error: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default="fr")

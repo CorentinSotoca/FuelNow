@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse
 
 from app.config import settings
 from app.limiter import limiter
-from app.routes import fuels, health, stations
+from app.routes import be, fuels, health, stations
 
 app = FastAPI(title="FuelNow API")
 
@@ -32,3 +32,4 @@ if settings.cors_allow_origins:
 app.include_router(health.router)
 app.include_router(fuels.router)
 app.include_router(stations.router)
+app.include_router(be.router)

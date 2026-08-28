@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import sys
 from datetime import datetime, timezone
@@ -11,45 +10,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import async_session
-from etl.adapters import OdsJsonAdapter
-from etl.load import check_guardrail, load_stations_atomically, purge_etl_runs
+from etl.be_adapter import StatbelAdapter
 
 logging.basicConfig(
     level=logging.getLevelName(settings.log_level),
     format='{"time":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}',
 )
-logger = logging.getLogger("etl")
+logger = logging.getLogger("etl.be")
 
 
-async def run_etl() -> None:
+async def run_be_etl() -> None:
     started_at = datetime.now(timezone.utc)
-    logger.info("ETL started")
+    logger.info("BE ETL started")
 
     run_id = await _create_run(started_at)
 
     try:
-        adapter, etag = await OdsJsonAdapter.fetch(
-            settings.source_dataset_url,
-        )
+        adapter = await StatbelAdapter.fetch(settings.statbel_api_url)
+        records = adapter.parse()
+        count = len(records)
+        logger.info(f"Parsed {count} BE max price records")
 
-        if adapter is None:
-            logger.info("Source not modified (304), skipping")
-            await _update_run(run_id, "skipped", finished_at=datetime.now(timezone.utc))
-            return
-
-        stations = list(adapter.iter_stations())
-        count = len(stations)
-        rejected = adapter.rejected_count
-        logger.info(f"Parsed {count} stations ({rejected} rejected)")
-
-        async with async_session() as session:
-            ok = await check_guardrail(
-                session, count, settings.etl_min_rows, settings.etl_min_ratio
-            )
-            await session.commit()
-
-        if not ok:
-            msg = f"Guardrail failed: {count} stations below threshold"
+        if count == 0:
+            msg = "No BE max price records parsed"
             logger.error(msg)
             await _update_run(run_id, "failed", error=msg, finished_at=datetime.now(timezone.utc))
             await _send_alert(msg)
@@ -57,31 +40,52 @@ async def run_etl() -> None:
 
         async with async_session() as session:
             async with session.begin():
-                rows_st, rows_pr = await load_stations_atomically(session, stations)
-                await session.execute(text("ANALYZE stations"))
-                await session.execute(text("ANALYZE station_prices"))
-                await purge_etl_runs(session)
-
-            logger.info(f"Loaded {rows_st} stations, {rows_pr} prices")
+                rows_inserted = await _upsert_prices(session, records)
+            logger.info(f"Upserted {rows_inserted} BE max price rows")
             await _update_run(
                 run_id,
                 "success",
-                rows_stations=rows_st,
-                rows_prices=rows_pr,
+                rows_prices=rows_inserted,
                 finished_at=datetime.now(timezone.utc),
             )
 
     except Exception as e:
-        logger.exception("ETL failed")
+        logger.exception("BE ETL failed")
         await _update_run(run_id, "failed", error=str(e), finished_at=datetime.now(timezone.utc))
         await _send_alert(str(e))
         sys.exit(1)
 
 
+async def _upsert_prices(session: AsyncSession, records: list) -> int:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    rows = 0
+    for rec in records:
+        result = await session.execute(
+            text(
+                "INSERT INTO be_max_prices (fuel_code, product_label, price_eur, price_date, fetched_at) "
+                "VALUES (:fuel_code, :product_label, :price_eur, :price_date, :fetched_at) "
+                "ON CONFLICT (fuel_code, price_date) DO UPDATE SET "
+                "product_label = EXCLUDED.product_label, "
+                "price_eur = EXCLUDED.price_eur, "
+                "fetched_at = EXCLUDED.fetched_at"
+            ),
+            {
+                "fuel_code": rec.fuel_code,
+                "product_label": rec.product_label,
+                "price_eur": rec.price_eur,
+                "price_date": rec.price_date,
+                "fetched_at": now,
+            },
+        )
+        rows += result.rowcount
+    return rows
+
+
 async def _create_run(started_at: datetime) -> int:
     async with async_session() as session:
         result = await session.execute(
-            text("INSERT INTO etl_runs (started_at, status, source) VALUES (:ts, 'running', 'fr') RETURNING id"),
+            text("INSERT INTO etl_runs (started_at, status, source) VALUES (:ts, 'running', 'be') RETURNING id"),
             {"ts": started_at},
         )
         run_id = result.scalar_one()
@@ -93,7 +97,6 @@ async def _update_run(
     run_id: int,
     status: str,
     *,
-    rows_stations: int | None = None,
     rows_prices: int | None = None,
     error: str | None = None,
     finished_at: datetime | None = None,
@@ -101,12 +104,11 @@ async def _update_run(
     async with async_session() as session:
         await session.execute(
             text(
-                "UPDATE etl_runs SET status=:status, rows_stations=:rs, rows_prices=:rp, "
+                "UPDATE etl_runs SET status=:status, rows_prices=:rp, "
                 "error=:err, finished_at=:ft WHERE id=:id"
             ),
             {
                 "status": status,
-                "rs": rows_stations,
                 "rp": rows_prices,
                 "err": error,
                 "ft": finished_at,
@@ -122,10 +124,10 @@ async def _send_alert(msg: str) -> None:
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            await client.post(settings.alert_webhook_url, json={"text": f"FuelNow ETL: {msg}"})
+            await client.post(settings.alert_webhook_url, json={"text": f"FuelNow BE ETL: {msg}"})
     except Exception:
         logger.warning("Failed to send alert", exc_info=True)
 
 
 if __name__ == "__main__":
-    asyncio.run(run_etl())
+    asyncio.run(run_be_etl())

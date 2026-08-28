@@ -1,4 +1,4 @@
-import type { FuelCode, FuelInfo, LatLon, StationSearchResponse } from "./types";
+import type { BeMaxPriceResponse, FuelCode, FuelInfo, LatLon, StationSearchResponse } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -47,5 +47,13 @@ export async function searchStations(params: SearchParams): Promise<StationSearc
   if (!res.ok) {
     throw new ApiError(res.status, `Erreur serveur (${res.status})`);
   }
+  return res.json();
+}
+
+export async function fetchBePrices(fuel?: string): Promise<BeMaxPriceResponse> {
+  const qs = new URLSearchParams();
+  if (fuel) qs.set("fuel", fuel);
+  const res = await fetch(`/api/be/prices?${qs.toString()}`);
+  if (!res.ok) throw new ApiError(res.status, `Failed to load BE prices: ${res.status}`);
   return res.json();
 }

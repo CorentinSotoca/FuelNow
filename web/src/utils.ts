@@ -54,3 +54,13 @@ export function formatDelta(delta: number | null): string {
   if (delta === null || delta === 0) return "moins cher";
   return `+${delta.toFixed(3).replace(".", ",")} €`;
 }
+
+export function isInBelgium(lat: number, lon: number): boolean {
+  return lat >= 49.5 && lat <= 51.5 && lon >= 2.5 && lon <= 6.5;
+}
+
+export function formatBeDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("fr-BE", { day: "2-digit", month: "2-digit", year: "numeric" });
+}

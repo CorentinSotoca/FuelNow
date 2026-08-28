@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from pydantic import BaseModel
 
@@ -70,3 +70,15 @@ class StationDetailResponse(BaseModel):
     services: dict | None
     opening_hours: dict | None
     prices: list[StationPriceDetail]
+
+
+class BeMaxPriceItem(BaseModel):
+    fuel_code: str
+    product_label: str
+    price_eur: float
+    price_date: date
+
+
+class BeMaxPriceResponse(BaseModel):
+    prices: list[BeMaxPriceItem]
+    fetched_at: datetime | None

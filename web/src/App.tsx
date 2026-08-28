@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import { fetchFuels } from "./api";
+import { BeMaxPricePanel } from "./components/BeMaxPricePanel";
 import { FuelSelect } from "./components/FuelSelect";
 import { MapView } from "./components/MapView";
 import { RadiusControl } from "./components/RadiusControl";
@@ -25,7 +26,7 @@ function App() {
   const [hoveredStationId, setHoveredStationId] = useState<number | null>(null);
   const [sheetState, setSheetState] = useState<SheetState>("half");
 
-  const { data, loading, error, retry } = useDebouncedSearch({
+  const { data, loading, error, retry, inBelgium, bePrices, beLoading } = useDebouncedSearch({
     point,
     radiusM,
     fuel,
@@ -81,7 +82,15 @@ function App() {
         <div className="sheet-handle" onClick={cycleSheet}>
           <div className="handle-bar" />
           <div className="sheet-peek">
-            {point && data && cheapestPrice !== null ? (
+            {point && inBelgium && bePrices && bePrices.prices.length > 0 ? (
+              (() => {
+                const bePrice = bePrices.prices.find((p) => p.fuel_code === fuel);
+                if (bePrice) {
+                  return <>🇧🇪 Prix max : <strong>{formatPrice(bePrice.price_eur)}</strong></>;
+                }
+                return <>🇧🇪 Prix max non disponible pour ce carburant</>;
+              })()
+            ) : point && data && cheapestPrice !== null ? (
               <>
                 <strong>{data.total}</strong> station{data.total > 1 ? "s" : ""}
                 {" — dès "}
@@ -110,6 +119,9 @@ function App() {
         </div>
 
         <div className="sidebar-results">
+          {point && inBelgium && (
+            <BeMaxPricePanel bePrices={bePrices} loading={beLoading} fuel={fuel} />
+          )}
           {point && (
             <ResultsList
               data={data}
@@ -123,6 +135,7 @@ function App() {
               onHoverStation={setHoveredStationId}
               onRetry={retry}
               onExpandRadius={handleExpandRadius}
+              inBelgium={inBelgium}
             />
           )}
         </div>

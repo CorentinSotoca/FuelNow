@@ -17,6 +17,7 @@ interface ResultsListProps {
   onHoverStation: (id: number | null) => void;
   onRetry: () => void;
   onExpandRadius: (deltaM: number) => void;
+  inBelgium?: boolean;
 }
 
 export function ResultsList({
@@ -31,6 +32,7 @@ export function ResultsList({
   onHoverStation,
   onRetry,
   onExpandRadius,
+  inBelgium,
 }: ResultsListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -88,7 +90,11 @@ export function ResultsList({
   if (!data || items.length === 0) {
     return (
       <div className="results-state empty">
-        <p>Aucune station trouvée dans ce rayon.</p>
+        <p>
+          {inBelgium
+            ? "Vous êtes en Belgique. Les prix maximum officiels sont affichés ci-dessus. Aucune station française dans ce rayon."
+            : "Aucune station trouvée dans ce rayon."}
+        </p>
         <button className="btn-expand" onClick={() => onExpandRadius(5000)}>
           Élargir le rayon de 5 km
         </button>
