@@ -143,10 +143,38 @@ function App() {
       setGpsError("Géolocalisation non supportée par ce navigateur");
       return;
     }
+    if (!window.isSecureContext) {
+      setGpsError("La géolocalisation nécessite HTTPS. Ce site n'est pas en contexte sécurisé.");
+      return;
+    }
     if (watchIdRef.current !== null) return;
 
     setGpsError(null);
     setGpsTracking(true);
+
+    navigator.geolocation.getCurrentPosition(
+      gpsSuccessRef.current,
+      (err) => {
+        if (navigator.permissions) {
+          navigator.permissions.query({ name: "geolocation" as PermissionName }).then((perm) => {
+            if (perm.state === "denied") {
+              setGpsError(
+                "Permission refusée par le navigateur. Pour l'activer : Chrome → ⋮ → Paramètres → Confidentialité → Paramètres des sites → Localisation → Autoriser.",
+              );
+            } else if (perm.state === "prompt") {
+              setGpsError("Le navigateur n'a pas demandé la permission. Essayez en navigation privée.");
+            } else {
+              gpsErrorRef.current(err);
+            }
+            setGpsTracking(false);
+          }).catch(() => gpsErrorRef.current(err));
+        } else {
+          gpsErrorRef.current(err);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+
     watchIdRef.current = navigator.geolocation.watchPosition(
       gpsSuccessRef.current,
       gpsErrorRef.current,
