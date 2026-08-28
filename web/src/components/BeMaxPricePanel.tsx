@@ -44,20 +44,20 @@ export function BeMaxPricePanel({ bePrices, loading, fuel }: BeMaxPricePanelProp
 
   return (
     <div className="be-max-price-panel">
-      <div className="be-panel-header">🇧🇪 Prix max Belgique</div>
+      <div className="be-panel-row">
+        <span className="be-panel-header">🇧🇪 Prix max Belgique</span>
+        {selectedPrice ? (
+          <span className="be-panel-price">{formatPrice(selectedPrice.price_eur)}</span>
+        ) : (
+          <span className="be-panel-unavailable">{label} : N/A</span>
+        )}
+      </div>
       {selectedPrice ? (
-        <div className="be-panel-body">
-          <div className="be-panel-fuel">{label}</div>
-          <div className="be-panel-price">{formatPrice(selectedPrice.price_eur)}</div>
-          <div className="be-panel-date">
-            Prix max au {formatBeDate(priceDate)}
-          </div>
+        <div className="be-panel-row be-panel-sub">
+          <span className="be-panel-fuel">{label}</span>
+          <span className="be-panel-date">au {formatBeDate(priceDate)}</span>
         </div>
-      ) : (
-        <p className="be-panel-unavailable">
-          {label} non disponible en Belgique.
-        </p>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -437,17 +437,21 @@
   font-size: 0.78rem;
   font-weight: 700;
   color: #92400e;
-  margin-bottom: 0.25rem;
 }
 
-.be-panel-body {
+.be-panel-row {
   display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.be-panel-sub {
+  margin-top: 0.1rem;
 }
 
 .be-panel-fuel {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: #555;
 }
 
@@ -455,11 +459,13 @@
   font-size: 1.05rem;
   font-weight: 700;
   color: #1e40af;
+  white-space: nowrap;
 }
 
 .be-panel-date {
   font-size: 0.72rem;
   color: #9ca3af;
+  white-space: nowrap;
 }
 
 .be-panel-unavailable {
@@ -627,7 +633,6 @@
   }
   .be-panel-header {
     font-size: 0.72rem;
-    margin-bottom: 0.15rem;
   }
   .be-panel-fuel {
     font-size: 0.72rem;
