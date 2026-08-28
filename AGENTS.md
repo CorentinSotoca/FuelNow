@@ -63,10 +63,16 @@ cd web && npm install && npm run dev   # → localhost:5173
 docker compose run --rm api pytest tests/ -q   # 24 tests
 
 # Prod
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build db
 docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 docker compose -f docker-compose.prod.yml run --rm etl python -m etl.run
+docker compose -f docker-compose.prod.yml up -d api web
 # → http://localhost:8080
+
+# Mise à jour
+git pull
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 
 # TypeScript check
 cd web && npx tsc --noEmit
@@ -83,7 +89,7 @@ cd web && npx tsc --noEmit
 
 ## Variables d'environnement
 
-Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL`, `SOURCE_DATASET_URL`, `CORS_ALLOW_ORIGINS`, `ETL_CRON`.
+Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obligatoire, à construire manuellement), `SOURCE_DATASET_URL`, `CORS_ALLOW_ORIGINS`, `ETL_CRON`, `WEB_PORT`.
 
 ## Décisions figées
 

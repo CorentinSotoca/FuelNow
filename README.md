@@ -68,6 +68,16 @@ L'application est disponible sur `http://localhost:8080` (nginx sert la SPA + pr
 > Sans migrations, `/health` renvoie une 500 (table `etl_runs` manquante).
 > Sans ETL, la recherche ne renvoie aucun résultat.
 
+## Mise à jour
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+```
+
+Les migrations ne font rien si le schéma est déjà à jour. L'ETL continue de tourner automatiquement à 06h00 via supercronic.
+
 ## Architecture
 
 ```
@@ -105,7 +115,7 @@ L'application est disponible sur `http://localhost:8080` (nginx sert la SPA + pr
 | `POSTGRES_DB` | `fuelnow` | Nom de la base |
 | `POSTGRES_USER` | `fuelnow` | Utilisateur DB |
 | `POSTGRES_PASSWORD` | `changeme` | Mot de passe DB |
-| `DATABASE_URL` | — | URL SQLAlchemy async (construite depuis les vars ci-dessus) |
+| `DATABASE_URL` | — | URL SQLAlchemy async (obligatoire, à construire manuellement) |
 | `SOURCE_DATASET_URL` | — | URL du dataset ODS (export JSON gzip) |
 | `ETL_CRON` | `0 6 * * *` | Schedule cron (format 5 champs, supercronic ajoute les secondes) |
 | `ETL_MIN_ROWS` | `5000` | Seuil minimum absolu de stations |
