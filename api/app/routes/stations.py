@@ -1,10 +1,13 @@
+import hashlib
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db import get_session
+from app.limiter import limiter
 from app.models import FUEL_TYPES
 from app.schemas import StationDetailResponse, StationPriceDetail, StationSearchItem, StationSearchResponse
 from app.status import get_last_success
@@ -46,10 +49,13 @@ _ORDER_BY_DISTANCE = "distance_m ASC, price_eur ASC NULLS LAST"
 
 
 @router.get("/api/stations/search", response_model=StationSearchResponse)
+@limiter.limit(f"{settings.rate_limit_per_min}/minute")
 async def search_stations(
+    request: Request,
+    response: Response,
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
-    radius_m: int = Query(5000, ge=500, le=30000),
+    radius_m: int = Query(5000, ge=500, le=settings.search_radius_max_m),
     fuel: str = Query(..., pattern="^(" + "|".join(FUEL_TYPES) + ")$"),
     include_unpriced: bool = Query(False),
     include_outage: bool = Query(False),
@@ -104,7 +110,7 @@ async def search_stations(
 
     data_updated_at, stale = await get_last_success(session)
 
-    return StationSearchResponse(
+    body = StationSearchResponse(
         items=items,
         total=total,
         page=page,
@@ -112,6 +118,16 @@ async def search_stations(
         data_updated_at=data_updated_at,
         stale=stale,
     )
+
+    etag = hashlib.md5(body.model_dump_json().encode()).hexdigest()
+    cache_control = f"public, max-age={settings.cache_ttl_s}"
+
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": cache_control})
+
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = cache_control
+    return body
 
 
 @router.get("/api/stations/{station_id}", response_model=StationDetailResponse)
@@ -128,8 +144,6 @@ async def get_station(station_id: int, session: AsyncSession = Depends(get_sessi
     )
     station = result.mappings().first()
     if station is None:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="Station not found")
 
     prices_result = await session.execute(

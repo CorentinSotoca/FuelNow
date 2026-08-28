@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     cache_ttl_s: int = 900
     log_level: str = "INFO"
     alert_webhook_url: str = ""
+    cors_allow_origins: str = ""
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
