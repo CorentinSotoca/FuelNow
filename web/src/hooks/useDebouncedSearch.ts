@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, fetchBePrices, searchStations } from "../api";
 import type { BeMaxPriceResponse, FuelCode, LatLon, StationSearchResponse } from "../types";
-import { isInBelgium } from "../utils";
+import { isNearBelgium } from "../utils";
 
 export type SearchErrorKind = "rate_limit" | "network" | "server" | "invalid";
 
@@ -41,7 +41,7 @@ export function useDebouncedSearch({
   const [beLoading, setBeLoading] = useState(false);
   const reqIdRef = useRef(0);
 
-  const inBelgium = point ? isInBelgium(point.lat, point.lon) : false;
+  const inBelgium = point ? isNearBelgium(point.lat, point.lon) : false;
 
   const execute = useCallback(
     async (p: LatLon, r: number, f: FuelCode, s: "price" | "distance") => {

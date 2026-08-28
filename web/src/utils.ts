@@ -55,8 +55,8 @@ export function formatDelta(delta: number | null): string {
   return `+${delta.toFixed(3).replace(".", ",")} €`;
 }
 
-export function isInBelgium(lat: number, lon: number): boolean {
-  return lat >= 49.5 && lat <= 51.5 && lon >= 2.5 && lon <= 6.5;
+export function isNearBelgium(lat: number, lon: number): boolean {
+  return lat >= 49.3 && lat <= 51.7 && lon >= 2.2 && lon <= 6.8;
 }
 
 export function formatBeDate(dateStr: string): string {
