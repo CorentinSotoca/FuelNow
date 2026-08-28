@@ -355,14 +355,16 @@ export function MapView({
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
       <div className="map-controls">
         {gpsError && (
-          <div className="gps-error-tooltip">{gpsError}</div>
+          <div className="gps-error-tooltip">
+            {gpsError}
+          </div>
         )}
         <button
           className={`map-btn ${gpsTracking ? "map-btn-active" : ""}`}
           onClick={onToggleGpsTracking}
           aria-label={gpsTracking ? "Arrêter le suivi GPS" : "Activer le suivi GPS"}
         >
-          {gpsTracking ? "🔵" : "📍"}
+          {gpsTracking ? "🔵" : "🧭"}
         </button>
         {gps && gpsTracking && (
           <button

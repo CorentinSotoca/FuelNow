@@ -14,6 +14,7 @@ const DEFAULT_RADIUS_M = 5000;
 const DEFAULT_FUEL: FuelCode = "gazole";
 const MAX_RADIUS_M = 30000;
 const SAVED_POINT_KEY = "fuelnow:lastPosition";
+const GPS_OPT_OUT_KEY = "fuelnow:gpsOptOut";
 
 export type GpsState = {
   position: LatLon;
@@ -77,8 +78,12 @@ function App() {
   const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
   const [hoveredStationId, setHoveredStationId] = useState<number | null>(null);
   const [sheetState, setSheetState] = useState<SheetState>("half");
-  const [geoLoading, setGeoLoading] = useState(false);
-  const [gpsTracking, setGpsTracking] = useState(false);
+  const [gpsTracking, setGpsTracking] = useState(() => {
+    try {
+      return localStorage.getItem(GPS_OPT_OUT_KEY) !== "1";
+    } catch {}
+    return true;
+  });
   const [gps, setGps] = useState<GpsState | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const online = useOnlineStatus();
@@ -124,6 +129,19 @@ function App() {
     }
 
     setGpsError(null);
+
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: "geolocation" as PermissionName }).then((result) => {
+        if (result.state === "denied") {
+          setGpsError(
+            "Localisation bloquée. Autorisez-la dans les réglages du navigateur (icône 🔒 dans la barre d'adresse → Autoriser la localisation).",
+          );
+          setGpsTracking(false);
+          try { localStorage.setItem(GPS_OPT_OUT_KEY, "1"); } catch {}
+        }
+      }).catch(() => {});
+    }
+
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         setGpsError(null);
@@ -135,13 +153,16 @@ function App() {
       },
       (err) => {
         if (err.code === err.PERMISSION_DENIED) {
-          setGpsError("Permission de localisation refusée");
+          setGpsError(
+            "Localisation bloquée. Autorisez-la dans les réglages du navigateur (icône 🔒 dans la barre d'adresse → Autoriser la localisation).",
+          );
+          try { localStorage.setItem(GPS_OPT_OUT_KEY, "1"); } catch {}
         } else if (err.code === err.POSITION_UNAVAILABLE) {
-          setGpsError("Position GPS indisponible");
+          setGpsError("Position GPS indisponible. Vérifiez que le GPS de votre appareil est activé.");
         } else if (err.code === err.TIMEOUT) {
-          setGpsError("Délai d'attente GPS dépassé");
+          setGpsError("Délai d'attente GPS dépassé. Réessayez à l'extérieur ou vérifiez votre signal GPS.");
         } else {
-          setGpsError("Erreur de géolocalisation");
+          setGpsError("Erreur de géolocalisation.");
         }
         setGpsTracking(false);
       },
@@ -173,13 +194,15 @@ function App() {
           },
           (err) => {
             if (err.code === err.PERMISSION_DENIED) {
-              setGpsError("Permission de localisation refusée");
+              setGpsError(
+                "Localisation bloquée. Autorisez-la dans les réglages du navigateur (icône 🔒 dans la barre d'adresse → Autoriser la localisation).",
+              );
             } else if (err.code === err.POSITION_UNAVAILABLE) {
-              setGpsError("Position GPS indisponible");
+              setGpsError("Position GPS indisponible. Vérifiez que le GPS de votre appareil est activé.");
             } else if (err.code === err.TIMEOUT) {
-              setGpsError("Délai d'attente GPS dépassé");
+              setGpsError("Délai d'attente GPS dépassé. Réessayez à l'extérieur ou vérifiez votre signal GPS.");
             } else {
-              setGpsError("Erreur de géolocalisation");
+              setGpsError("Erreur de géolocalisation.");
             }
             setGpsTracking(false);
           },
@@ -195,27 +218,15 @@ function App() {
     setRadiusM((r) => Math.min(r + deltaM, MAX_RADIUS_M));
   };
 
-  const handleGeolocate = useCallback(() => {
-    if (!navigator.geolocation) return;
-    setGeoLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const p = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        setPoint(p);
-        setGps({
-          position: p,
-          accuracy: pos.coords.accuracy,
-          heading: pos.coords.heading,
-        });
-        setGeoLoading(false);
-      },
-      () => setGeoLoading(false),
-      { timeout: 5000, enableHighAccuracy: true },
-    );
-  }, []);
-
   const toggleGpsTracking = useCallback(() => {
-    setGpsTracking((prev) => !prev);
+    setGpsTracking((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(GPS_OPT_OUT_KEY, next ? "0" : "1");
+      } catch {}
+      if (next) setGpsError(null);
+      return next;
+    });
   }, []);
 
   const syncToGps = useCallback(() => {
@@ -323,9 +334,6 @@ function App() {
         <div className="sidebar-controls">
           <div className="controls-header">
             <h1>FuelNow</h1>
-            <button className="btn-geolocate" onClick={handleGeolocate} aria-label="Ma position">
-              {geoLoading ? <span className="geo-spinner" /> : "📍"}
-            </button>
           </div>
           {!point && <p className="hint">Cliquez sur la carte pour choisir un point de recherche.</p>}
           <FuelSelect fuels={fuels} selected={fuel} onChange={setFuel} />
