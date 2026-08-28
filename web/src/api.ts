@@ -1,8 +1,15 @@
 import type { FuelCode, FuelInfo, LatLon, StationSearchResponse } from "./types";
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function fetchFuels(): Promise<FuelInfo[]> {
   const res = await fetch("/api/fuels");
-  if (!res.ok) throw new Error(`Failed to load fuels: ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `Failed to load fuels: ${res.status}`);
   return res.json();
 }
 
@@ -32,13 +39,13 @@ export async function searchStations(params: SearchParams): Promise<StationSearc
 
   const res = await fetch(`/api/stations/search?${qs.toString()}`);
   if (res.status === 429) {
-    throw new Error("Trop de requêtes, veuillez patienter quelques instants.");
+    throw new ApiError(429, "Trop de requêtes, veuillez patienter quelques instants.");
   }
   if (res.status === 422) {
-    throw new Error("Paramètres de recherche invalides.");
+    throw new ApiError(422, "Paramètres de recherche invalides.");
   }
   if (!res.ok) {
-    throw new Error(`Erreur serveur (${res.status})`);
+    throw new ApiError(res.status, `Erreur serveur (${res.status})`);
   }
   return res.json();
 }
