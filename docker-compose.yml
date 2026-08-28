@@ -34,6 +34,16 @@ services:
     networks:
       - backend
 
+  etl:
+    build: ./api
+    command: ["python", "-m", "etl.run"]
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend
+
 volumes:
   pgdata:
 
