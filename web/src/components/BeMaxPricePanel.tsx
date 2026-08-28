@@ -21,7 +21,7 @@ export function BeMaxPricePanel({ bePrices, loading, fuel }: BeMaxPricePanelProp
   if (loading) {
     return (
       <div className="be-max-price-panel">
-        <div className="be-panel-header">🇧🇪 Prix maximum officiel en Belgique</div>
+        <div className="be-panel-header">🇧🇪 Prix max Belgique</div>
         <p className="be-panel-loading">Chargement…</p>
       </div>
     );
@@ -30,7 +30,7 @@ export function BeMaxPricePanel({ bePrices, loading, fuel }: BeMaxPricePanelProp
   if (!bePrices || bePrices.prices.length === 0) {
     return (
       <div className="be-max-price-panel">
-        <div className="be-panel-header">🇧🇪 Prix maximum officiel en Belgique</div>
+        <div className="be-panel-header">🇧🇪 Prix max Belgique</div>
         <p className="be-panel-unavailable">Prix maximum non disponible pour ce carburant.</p>
       </div>
     );
@@ -44,7 +44,7 @@ export function BeMaxPricePanel({ bePrices, loading, fuel }: BeMaxPricePanelProp
 
   return (
     <div className="be-max-price-panel">
-      <div className="be-panel-header">🇧🇪 Prix maximum officiel en Belgique</div>
+      <div className="be-panel-header">🇧🇪 Prix max Belgique</div>
       {selectedPrice ? (
         <div className="be-panel-body">
           <div className="be-panel-fuel">{label}</div>
