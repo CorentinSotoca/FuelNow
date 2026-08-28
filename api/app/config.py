@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str
-    source_dataset_url: str = ""
+    source_dataset_url: str = "https://data.economie.gouv.fr/api/records/1.0/download/?dataset=prix-des-carburants-en-france-flux-instantane-v2&format=json"
     source_format: str = "json"
     etl_cron: str = "0 6 * * *"
     etl_be_cron: str = "0 7 * * *"
