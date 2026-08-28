@@ -1,0 +1,163 @@
+from typing import Literal
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import get_session
+from app.models import FUEL_TYPES
+from app.schemas import StationDetailResponse, StationPriceDetail, StationSearchItem, StationSearchResponse
+from app.status import get_last_success
+
+router = APIRouter()
+
+
+_SEARCH_SQL_TEMPLATE = """
+    WITH filtered AS (
+        SELECT
+            s.id,
+            s.address,
+            s.city,
+            s.postal_code,
+            s.road_type,
+            ST_Y(s.geom::geometry) AS lat,
+            ST_X(s.geom::geometry) AS lon,
+            ST_Distance(s.geom, ST_MakePoint(:lon, :lat)::geography) AS distance_m,
+            sp.price_eur,
+            sp.price_maj,
+            COALESCE(sp.outage, 'none') AS outage
+        FROM stations s
+        LEFT JOIN station_prices sp ON sp.station_id = s.id AND sp.fuel = :fuel
+        WHERE ST_DWithin(s.geom, ST_MakePoint(:lon, :lat)::geography, :radius_m)
+          AND (:include_unpriced OR sp.price_eur IS NOT NULL)
+          AND (:include_outage OR COALESCE(sp.outage, 'none') = 'none')
+    ),
+    agg AS (
+        SELECT count(*) AS total, min(price_eur) AS min_price FROM filtered
+    )
+    SELECT filtered.*, agg.total, agg.min_price
+    FROM filtered, agg
+    ORDER BY {order_by}
+    LIMIT :limit OFFSET :offset
+"""
+
+_ORDER_BY_PRICE = "price_eur ASC NULLS LAST, distance_m ASC"
+_ORDER_BY_DISTANCE = "distance_m ASC, price_eur ASC NULLS LAST"
+
+
+@router.get("/api/stations/search", response_model=StationSearchResponse)
+async def search_stations(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    radius_m: int = Query(5000, ge=500, le=30000),
+    fuel: str = Query(..., pattern="^(" + "|".join(FUEL_TYPES) + ")$"),
+    include_unpriced: bool = Query(False),
+    include_outage: bool = Query(False),
+    sort: Literal["price", "distance"] = Query("price"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> StationSearchResponse:
+    offset = (page - 1) * page_size
+    order_by = _ORDER_BY_DISTANCE if sort == "distance" else _ORDER_BY_PRICE
+    search_sql = text(_SEARCH_SQL_TEMPLATE.format(order_by=order_by))
+
+    result = await session.execute(
+        search_sql,
+        {
+            "lat": lat,
+            "lon": lon,
+            "radius_m": radius_m,
+            "fuel": fuel,
+            "include_unpriced": include_unpriced,
+            "include_outage": include_outage,
+            "limit": page_size,
+            "offset": offset,
+        },
+    )
+    rows = result.mappings().all()
+
+    total = rows[0]["total"] if rows else 0
+    min_price = rows[0]["min_price"] if rows else None
+
+    items = [
+        StationSearchItem(
+            id=r["id"],
+            address=r["address"],
+            city=r["city"],
+            postal_code=r["postal_code"],
+            road_type=r["road_type"],
+            lat=r["lat"],
+            lon=r["lon"],
+            distance_m=r["distance_m"],
+            price_eur=float(r["price_eur"]) if r["price_eur"] is not None else None,
+            price_updated_at=r["price_maj"],
+            outage=r["outage"],
+            cheapest_delta_eur=(
+                float(r["price_eur"]) - float(min_price)
+                if r["price_eur"] is not None and min_price is not None
+                else None
+            ),
+        )
+        for r in rows
+    ]
+
+    data_updated_at, stale = await get_last_success(session)
+
+    return StationSearchResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        data_updated_at=data_updated_at,
+        stale=stale,
+    )
+
+
+@router.get("/api/stations/{station_id}", response_model=StationDetailResponse)
+async def get_station(station_id: int, session: AsyncSession = Depends(get_session)) -> StationDetailResponse:
+    result = await session.execute(
+        text(
+            """
+            SELECT id, address, city, postal_code, dept_code, dept_name, region_name, road_type,
+                   ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon, services, opening_hours
+            FROM stations WHERE id = :id
+            """
+        ),
+        {"id": station_id},
+    )
+    station = result.mappings().first()
+    if station is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    prices_result = await session.execute(
+        text("SELECT fuel, price_eur, price_maj, outage FROM station_prices WHERE station_id = :id"),
+        {"id": station_id},
+    )
+    prices = [
+        StationPriceDetail(
+            fuel=p["fuel"],
+            price_eur=float(p["price_eur"]) if p["price_eur"] is not None else None,
+            price_maj=p["price_maj"],
+            outage=p["outage"],
+        )
+        for p in prices_result.mappings().all()
+    ]
+
+    return StationDetailResponse(
+        id=station["id"],
+        address=station["address"],
+        city=station["city"],
+        postal_code=station["postal_code"],
+        dept_code=station["dept_code"],
+        dept_name=station["dept_name"],
+        region_name=station["region_name"],
+        road_type=station["road_type"],
+        lat=station["lat"],
+        lon=station["lon"],
+        services=station["services"],
+        opening_hours=station["opening_hours"],
+        prices=prices,
+    )
