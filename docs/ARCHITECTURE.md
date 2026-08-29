@@ -139,7 +139,7 @@ Enveloppe : `{ items, total, page, page_size, data_updated_at, stale }`.
 Règles transverses :
 - Validation stricte Pydantic ; 422 sur param hors bornes, 503 si base jamais peuplée.
 - Rate limit `slowapi` sur **tous** les endpoints : 60 req/min/IP (clé = IP réelle via `X-Real-IP` positionné par nginx, **pas** `X-Forwarded-For` qui est spoofable).
-- En-têtes de sécurité (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy) ajoutées par nginx.
+- En-têtes de sécurité (X-Frame-Options, X-Content-Type-Options, Referrer-Policy) ajoutées par nginx. **CSP retirée** — voir gotcha MapLibre dans AGENTS.md.
 - CORS : désactivé en prod (même origine via proxy) ; `localhost:5173` autorisé en dev.
 - Cache : `Cache-Control: public, max-age=900` + `ETag` sur `/search` ; optionnellement cache applicatif in-process (LRU 500 entrées, TTL 15 min) clé = `(lat,lon arrondis 3 déc., radius, fuel, sort, page)`. Redis non nécessaire à cette échelle.
 - Pas d'auth (données publiques, service en lecture seule).
