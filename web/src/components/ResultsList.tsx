@@ -157,20 +157,20 @@ export function ResultsList({
             />
           </div>
         ))}
-      </div>
 
-      {data.items.length < data.total && (
-        <div className="results-load-more">
-          <button
-            type="button"
-            className="btn-load-more"
-            onClick={onLoadMore}
-            disabled={loadingMore}
-          >
-            {loadingMore ? "Chargement…" : `Charger plus (${data.items.length}/${data.total})`}
-          </button>
-        </div>
-      )}
+        {data.items.length < data.total && (
+          <div className="results-load-more">
+            <button
+              type="button"
+              className="btn-load-more"
+              onClick={onLoadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore ? "Chargement…" : `Charger plus (${data.items.length}/${data.total})`}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
