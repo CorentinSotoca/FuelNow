@@ -110,6 +110,7 @@ function App() {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const justDraggedRef = useRef<boolean>(false);
+  const movedRef = useRef<boolean>(false);
   const watchIdRef = useRef<number | null>(null);
 
   const gpsErrorRef = useRef<(err: GeolocationPositionError) => void>((err) => {
@@ -279,6 +280,7 @@ function App() {
       startY: e.touches[0].clientY,
       startHeight: sidebarRef.current?.offsetHeight ?? sheetToPx(sheetState),
     };
+    movedRef.current = false;
     if (sidebarRef.current) {
       sidebarRef.current.style.transition = "none";
     }
@@ -287,6 +289,7 @@ function App() {
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!dragRef.current || !sidebarRef.current) return;
     const delta = dragRef.current.startY - e.touches[0].clientY;
+    if (Math.abs(delta) > 4) movedRef.current = true;
     const newHeight = Math.max(
       SHEET_HEIGHTS.collapsed,
       Math.min(dragRef.current.startHeight + delta, window.innerHeight * 0.9),
@@ -301,8 +304,10 @@ function App() {
     sidebarRef.current.style.maxHeight = "";
     setSheetState(pxToSheet(currentHeight));
     dragRef.current = null;
-    justDraggedRef.current = true;
-    setTimeout(() => { justDraggedRef.current = false; }, 200);
+    if (movedRef.current) {
+      justDraggedRef.current = true;
+      setTimeout(() => { justDraggedRef.current = false; }, 200);
+    }
   };
 
   const cycleSheet = () => {
