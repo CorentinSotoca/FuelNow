@@ -25,7 +25,10 @@ function StationCardInner({
   const isAutoroute = station.road_type === "A";
   const labelParts = [station.address, [station.postal_code, station.city].filter(Boolean).join(" ")].filter(Boolean);
   const label = encodeURIComponent(labelParts.join(", "));
-  const itineraryUrl = `geo:${station.lat},${station.lon}?q=${station.lat},${station.lon}${label ? `(${label})` : ""}`;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const itineraryUrl = isIOS
+    ? `https://maps.apple.com/?ll=${station.lat},${station.lon}&q=${label}`
+    : `geo:${station.lat},${station.lon}?q=${station.lat},${station.lon}${label ? `(${label})` : ""}`;
 
   return (
     <div
