@@ -316,15 +316,27 @@
   color: #9ca3af;
 }
 
-.itinerary-link {
-  font-size: 0.75rem;
-  color: #2563eb;
+.itinerary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  background: #2563eb;
   text-decoration: none;
+  padding: 8px 14px;
+  border-radius: 8px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
-.itinerary-link:hover {
-  text-decoration: underline;
+.itinerary-btn:hover {
+  background: #1d4ed8;
+}
+
+.itinerary-btn svg {
+  flex-shrink: 0;
 }
 
 /* States */
@@ -671,8 +683,9 @@
     font-size: 1.05rem;
   }
 
-  .itinerary-link {
-    font-size: 0.78rem;
+  .itinerary-btn {
+    font-size: 0.9rem;
+    padding: 10px 16px;
   }
 
   /* Hide hint when sheet collapsed, keep only handle visible */
