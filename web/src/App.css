@@ -544,7 +544,7 @@
   }
 
   .sidebar.sheet-collapsed {
-    max-height: 56px;
+    max-height: 72px;
   }
   .sidebar.sheet-half {
     max-height: 50vh;
@@ -576,6 +576,25 @@
     height: 4px;
     background: #d1d5db;
     border-radius: 2px;
+  }
+
+  .handle-arrow {
+    display: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    color: #6b7280;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar.sheet-collapsed .handle-bar {
+    display: none;
+  }
+
+  .sidebar.sheet-collapsed .handle-arrow {
+    display: flex;
   }
 
   .sheet-peek {

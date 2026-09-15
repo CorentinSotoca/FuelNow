@@ -27,7 +27,7 @@ export type GpsState = {
 type SheetState = "collapsed" | "half" | "full";
 
 const SHEET_HEIGHTS: Record<SheetState, number> = {
-  collapsed: 56,
+  collapsed: 72,
   half: 0.5,
   full: 0.88,
 };
@@ -370,6 +370,7 @@ function App() {
           onTouchEnd={handleTouchEnd}
         >
           <div className="handle-bar" />
+          <div className="handle-arrow">↑</div>
           <div className="sheet-peek">
             {point && inBelgium && bePrices && bePrices.prices.length > 0 ? (
               (() => {
