@@ -676,11 +676,6 @@
   }
 
   /* Hide hint when sheet collapsed, keep only handle visible */
-  .sidebar.sheet-collapsed .sidebar-controls,
-  .sidebar.sheet-collapsed .sidebar-results,
-  .sidebar.sheet-collapsed .sidebar-footer {
-    display: none;
-  }
 
   /* BE panel compact mobile */
   .be-max-price-panel {
