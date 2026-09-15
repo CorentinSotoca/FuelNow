@@ -375,7 +375,9 @@ function App() {
           onTouchEnd={handleTouchEnd}
         >
           <div className="handle-bar" />
-          <div className="handle-arrow">↑</div>
+          <div className="handle-arrow">
+            <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+          </div>
           <div className="sheet-peek">
             {point && inBelgium && bePrices && bePrices.prices.length > 0 ? (
               (() => {
