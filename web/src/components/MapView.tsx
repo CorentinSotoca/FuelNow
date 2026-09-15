@@ -82,7 +82,7 @@ function applyStationElStyle(
   el.style.height = `${selected ? 28 : hovered ? 25 : 22}px`;
   el.style.padding = "0 6px";
   el.style.whiteSpace = "nowrap";
-  el.style.zIndex = selected ? "1000" : "";
+  el.style.zIndex = selected ? "5" : "";
 }
 
 export function MapView({
