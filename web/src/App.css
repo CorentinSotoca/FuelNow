@@ -567,6 +567,11 @@
     touch-action: none;
   }
 
+  .sheet-handle * {
+    touch-action: none;
+    pointer-events: none;
+  }
+
   .sheet-handle:active {
     cursor: grabbing;
   }
