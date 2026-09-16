@@ -16,6 +16,7 @@ export interface StationSearchItem {
   city: string | null;
   postal_code: string | null;
   road_type: string | null;
+  enseigne: string | null;
   lat: number;
   lon: number;
   distance_m: number;

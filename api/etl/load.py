@@ -94,6 +94,7 @@ async def load_stations_atomically(
             "dept_name": s.dept_name,
             "region_name": s.region_name,
             "road_type": s.road_type,
+            "enseigne": s.enseigne,
             "geom": f"SRID=4326;POINT({s.lon} {s.lat})",
             "services": s.services,
             "opening_hours": s.opening_hours,

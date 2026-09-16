@@ -148,6 +148,7 @@ class OdsJsonAdapter:
                 dept_name=row.get("departement"),
                 region_name=row.get("region"),
                 road_type=row.get("pop"),
+                enseigne=row.get("enseigne"),
                 lon=float(lon),
                 lat=float(lat),
                 services={"services": row.get("services_service")} if row.get("services_service") else None,

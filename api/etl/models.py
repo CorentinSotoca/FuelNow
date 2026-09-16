@@ -53,6 +53,7 @@ class StationRecord(BaseModel):
     dept_name: str | None = None
     region_name: str | None = None
     road_type: str | None = None
+    enseigne: str | None = None
     lon: float
     lat: float
     services: dict[str, Any] | None = None

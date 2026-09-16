@@ -50,6 +50,7 @@ def test_station_fields(adapter: OdsJsonAdapter):
     paris = stations[75001003]
     assert paris.city == "Paris"
     assert paris.road_type == "R"
+    assert paris.enseigne == "Carrefour"
     assert paris.postal_code == "75001"
     assert paris.lon == pytest.approx(2.3522)
     assert paris.lat == pytest.approx(48.8566)
