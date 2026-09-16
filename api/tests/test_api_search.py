@@ -36,8 +36,8 @@ async def seeded_db():
         for sid, lat, lon in STATIONS:
             await session.execute(
                 text(
-                    "INSERT INTO stations (id, address, city, postal_code, road_type, enseigne, geom) "
-                    "VALUES (:id, 'Test', 'Test', '00000', 'R', 'TestBrand', ST_MakePoint(:lon, :lat)::geography) "
+                    "INSERT INTO stations (id, address, city, postal_code, road_type, geom) "
+                    "VALUES (:id, 'Test', 'Test', '00000', 'R', ST_MakePoint(:lon, :lat)::geography) "
                     "ON CONFLICT (id) DO NOTHING"
                 ),
                 {"id": sid, "lat": lat, "lon": lon},
@@ -152,17 +152,6 @@ async def test_search_invalid_radius_returns_422(client):
         params={"lat": 0.0, "lon": 0.0, "radius_m": 100, "fuel": "gazole"},
     )
     assert resp.status_code == 422
-
-
-async def test_search_returns_enseigne(client, seeded_db):
-    resp = await client.get(
-        "/api/stations/search",
-        params={"lat": 0.0, "lon": 0.0, "radius_m": 1000, "fuel": "gazole"},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    for item in data["items"]:
-        assert item["enseigne"] == "TestBrand"
 
 
 async def test_station_detail_found(client, seeded_db):

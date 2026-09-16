@@ -31,7 +31,6 @@ class StationSearchItem(BaseModel):
     city: str | None
     postal_code: str | None
     road_type: str | None
-    enseigne: str | None = None
     lat: float
     lon: float
     distance_m: float
@@ -66,7 +65,6 @@ class StationDetailResponse(BaseModel):
     dept_name: str | None
     region_name: str | None
     road_type: str | None
-    enseigne: str | None = None
     lat: float
     lon: float
     services: dict | None

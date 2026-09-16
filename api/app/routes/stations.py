@@ -35,7 +35,6 @@ _SEARCH_SQL_TEMPLATE = """
             s.city,
             s.postal_code,
             s.road_type,
-            s.enseigne,
             ST_Y(s.geom::geometry) AS lat,
             ST_X(s.geom::geometry) AS lon,
             ST_Distance(s.geom, ST_MakePoint(:lon, :lat)::geography) AS distance_m,
@@ -115,7 +114,6 @@ async def search_stations(
             city=r["city"],
             postal_code=r["postal_code"],
             road_type=r["road_type"],
-            enseigne=r["enseigne"],
             lat=r["lat"],
             lon=r["lon"],
             distance_m=r["distance_m"],
@@ -164,7 +162,7 @@ async def get_station(
     result = await session.execute(
         text(
             """
-            SELECT id, address, city, postal_code, dept_code, dept_name, region_name, road_type, enseigne,
+            SELECT id, address, city, postal_code, dept_code, dept_name, region_name, road_type,
                    ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon, services, opening_hours
             FROM stations WHERE id = :id
             """
@@ -198,7 +196,6 @@ async def get_station(
         dept_name=station["dept_name"],
         region_name=station["region_name"],
         road_type=station["road_type"],
-        enseigne=station["enseigne"],
         lat=station["lat"],
         lon=station["lon"],
         services=station["services"],

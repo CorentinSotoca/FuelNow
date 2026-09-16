@@ -108,8 +108,8 @@ async def test_load_stations_atomically_replaces_data():
         for sid in (900000100, 900000101):
             await session.execute(
                 text(
-                    "INSERT INTO stations (id, address, city, postal_code, road_type, enseigne, geom) "
-                    "VALUES (:id, 'Old', 'Old', '00000', 'R', 'OldBrand', "
+                    "INSERT INTO stations (id, address, city, postal_code, road_type, geom) "
+                    "VALUES (:id, 'Old', 'Old', '00000', 'R', "
                     "ST_MakePoint(0.001, 0.001)::geography) "
                     "ON CONFLICT (id) DO NOTHING"
                 ),
@@ -132,7 +132,6 @@ async def test_load_stations_atomically_replaces_data():
                 postal_code="00000",
                 city="Test",
                 road_type="R",
-                enseigne="NewBrand",
                 lon=0.002,
                 lat=0.002,
                 prices=[

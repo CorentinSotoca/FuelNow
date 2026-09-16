@@ -38,7 +38,7 @@ function StationCardInner({
       onMouseLeave={() => onHover(null)}
       role="button"
       tabIndex={0}
-      aria-label={`Station ${station.enseigne ?? ""} ${station.address ?? ""} ${station.postal_code ?? ""} ${station.city ?? ""}, ${formatPrice(station.price_eur)}, ${formatDistance(station.distance_m)}`}
+      aria-label={`Station ${station.address ?? ""} ${station.postal_code ?? ""} ${station.city ?? ""}, ${formatPrice(station.price_eur)}, ${formatDistance(station.distance_m)}`}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -51,10 +51,6 @@ function StationCardInner({
       </div>
 
       <div className="station-card-body">
-        {station.enseigne && (
-          <div className="station-card-enseigne">{station.enseigne}</div>
-        )}
-
         <div className="station-card-top">
           <span className="station-card-price" style={{ color }}>
             {formatPrice(station.price_eur)}
