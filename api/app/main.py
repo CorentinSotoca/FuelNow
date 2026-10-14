@@ -1,3 +1,4 @@
+import contextlib
 import time
 
 import structlog
@@ -9,7 +10,9 @@ from starlette.responses import JSONResponse
 
 from app.config import settings
 from app.limiter import limiter
+from app.mcp_server import mcp
 from app.routes import be, fuels, health, stations
+from mcp.server.transport_security import TransportSecuritySettings
 
 structlog.configure(
     processors=[
@@ -20,7 +23,20 @@ structlog.configure(
 )
 logger = structlog.get_logger("api")
 
-app = FastAPI(title="FuelNow API")
+# Build the MCP streamable HTTP app — must be called before accessing mcp.session_manager
+# DNS rebinding protection disabled: nginx is the front-facing server and validates Host headers
+mcp_app = mcp.streamable_http_app(
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with mcp.session_manager.run():
+        yield
+
+
+app = FastAPI(title="FuelNow API", lifespan=lifespan)
 
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
@@ -46,16 +62,41 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONRe
     return JSONResponse(status_code=429, content={"detail": "Too many requests, please retry later."})
 
 
+# CORS — always enabled for public MCP access (POST/DELETE needed for Streamable HTTP)
 if settings.cors_allow_origins:
     origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_methods=["GET"],
-        allow_headers=[],
-    )
+else:
+    origins = ["*"]
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["*"],
+)
+
+# API routes
 app.include_router(health.router)
 app.include_router(fuels.router)
 app.include_router(stations.router)
 app.include_router(be.router)
+
+
+# Well-known MCP server discovery manifest (before Mount("/", ...) catch-all)
+@app.get("/.well-known/mcp-server")
+async def mcp_well_known() -> dict:
+    return {
+        "endpoint": "/mcp",
+        "transport": "streamable-http",
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+            "name": "FuelNow",
+            "version": "1.0.0",
+            "description": "Find the cheapest fuel stations near a location in France and Belgium",
+        },
+        "capabilities": {"tools": {}},
+    }
+
+
+# MCP server — Streamable HTTP transport (mounted at root, internal route at /mcp)
+app.mount("/", mcp_app)

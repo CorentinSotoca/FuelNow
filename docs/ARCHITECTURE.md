@@ -134,6 +134,8 @@ Enveloppe : `{ items, total, page, page_size, data_updated_at, stale }`.
 - `GET /api/fuels` → liste des carburants + libellés (alimente le select).
 - `GET /api/stations/{id}` → détail station (tous carburants, services, horaires bruts).
 - `GET /health` → `{status, last_success_at, age_hours, stale}`.
+- `GET /.well-known/mcp-server` → manifest de découverte MCP (endpoint, transport, capabilities).
+- `POST /mcp` → serveur MCP (Streamable HTTP, spec 2025-11-25). Tools : `search_stations`, `get_station_detail`, `list_fuels`, `get_be_prices`, `get_health`. Public, sans auth. La logique métier est dans `app/services.py`, partagée entre routes REST et tools MCP.
 - `GET /metrics` → Métriques non exposées en v1.
 
 Règles transverses :

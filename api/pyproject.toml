@@ -19,6 +19,7 @@ dependencies = [
     "httpx>=0.28",
     "slowapi>=0.1.9",
     "structlog>=24.4",
+    "mcp>=2,<3",
 ]
 
 [project.optional-dependencies]

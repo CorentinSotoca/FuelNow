@@ -10,6 +10,7 @@ FuelNow est une application web dockerisée qui permet de trouver les stations-s
 |---|---|
 | Base de données | PostgreSQL 16 + PostGIS 3.4 |
 | API | Python 3.12 · FastAPI · SQLAlchemy 2 (async) · asyncpg |
+| MCP | Model Context Protocol (spec 2025-11-25) · `mcp` SDK v2 · Streamable HTTP |
 | ETL | Python · httpx · SQLAlchemy Core · supercronic (cron FR 06:00, BE 07:00) |
 | Frontend | React 19 · TypeScript · Vite 8 · MapLibre GL JS v6 |
 | Prod | Docker Compose · nginx (SPA + reverse proxy) |
@@ -20,6 +21,8 @@ FuelNow est une application web dockerisée qui permet de trouver les stations-s
 api/                  FastAPI + ETL (même image Python)
   app/                Application FastAPI
     routes/           health, fuels, stations, be
+    services.py       Couche service (logique DB partagée entre routes et MCP)
+    mcp_server.py     Serveur MCP (MCPServer, 5 tools, Streamable HTTP)
     config.py         Settings (env vars)
     db.py             Engine SQLAlchemy async
     limiter.py        Rate limit slowapi
@@ -94,6 +97,31 @@ cd web && npx tsc --noEmit
 | `GET /api/stations/search` | Recherche par rayon (`lat`, `lon`, `radius_m`, `fuel`, `sort`, pagination) |
 | `GET /api/stations/{id}` | Détail d'une station |
 | `GET /api/be/prices` | Prix maximum officiels Belgique (filtre optionnel `fuel`) |
+| `POST /mcp` | Serveur MCP (Streamable HTTP, tools/list, tools/call, initialize) |
+| `GET /.well-known/mcp-server` | Manifest de découverte MCP (endpoint, transport, capabilities) |
+
+## Serveur MCP
+
+FuelNow expose un serveur MCP public (sans auth) sur `https://fuelnow.squale.ovh/mcp` via le transport Streamable HTTP (spec 2025-11-25).
+
+- **SDK** : `mcp` v2 (`MCPServer` de `mcp.server.mcpserver`).
+- **Montage** : `app.mount("/", mcp.streamable_http_app())` — l'app MCP a sa propre route interne `/mcp`, d'où le mount à la racine.
+- **Lifespan** : le `session_manager.run()` doit être lancé dans le lifespan de l'app hôte FastAPI, sinon `RuntimeError: Task group is not initialized`.
+- **DNS rebinding protection** : désactivée (`TransportSecuritySettings(enable_dns_rebinding_protection=False)`) car nginx est le front-facing server.
+- **Well-known** : `/.well-known/mcp-server` sert un manifest JSON (endpoint, transport, protocolVersion, capabilities).
+- **Nginx** : `location /mcp` avec `proxy_buffering off` (SSE streaming), `proxy_read_timeout 86400s`.
+
+### 5 tools exposés
+
+| Tool | Description |
+|---|---|
+| `search_stations` | Recherche par geo + fuel + rayon (mêmes params que l'API REST) |
+| `get_station_detail` | Détail d'une station (adresse, prix, services, horaires) |
+| `list_fuels` | 6 carburants disponibles |
+| `get_be_prices` | Prix maximum réglementés Belgique |
+| `get_health` | Statut API + fraîcheur des données |
+
+La logique métier est dans `api/app/services.py`, partagée entre les route handlers FastAPI et les tools MCP (pas de duplication de SQL).
 
 ## Variables d'environnement
 
@@ -154,6 +182,15 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 2. supercronic en PID 1 crash sur "Failed to fork exec" → flag **`-no-reap`**.
 3. Pas de substitution de variables d'env dans le crontab → `entrypoint.sh` génère le fichier au runtime.
 4. Deux entries : FR (`etl.run`) et BE (`etl.be_run`).
+
+### MCP
+
+- **Mount à la racine** : l'app MCP définit sa propre route `/mcp` en interne. Si on mount sur `/mcp` au lieu de `/`, la route devient `/mcp/mcp` → 404.
+- **Lifespan obligatoire** : `mcp.session_manager` n'existe qu'après `streamable_http_app()`. Le lifespan de l'app hôte doit entrer `session_manager.run()`, sinon chaque requête MCP → 500.
+- **DNS rebinding** : le SDK active `enable_dns_rebinding_protection=True` par défaut avec `allowed_hosts=["127.0.0.1:*", "localhost:*"]`. En prod derrière nginx, le Host header est `fuelnow.squale.ovh` → 421. Désactivé via `TransportSecuritySettings`.
+- **CORS** : le MCP utilise POST/DELETE (Streamable HTTP), pas seulement GET. Le CORS de l'app hôte doit autoriser ces méthodes.
+- **Pas de rate limit sur /mcp** : slowapi agit via décorateur `@limiter.limit()` sur les routes, pas sur les mounts. `/mcp` n'est pas décoré → non limité.
+- **Nginx buffering** : si `proxy_buffering` reste `on`, les SSE streams sont bufferisés → timeout MCP. `proxy_buffering off` obligatoire sur `location /mcp`.
 
 ### Responsive mobile
 
