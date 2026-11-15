@@ -55,17 +55,22 @@ class OverpassAdapter:
     async def fetch(cls, urls: list[str], *, timeout: float = 900.0) -> OverpassAdapter:
         """POST vers Overpass, avec fallback d'endpoint et retry réseau.
 
-        Overpass rate-limit fréquemment (429) : on retente avec backoff,
-        puis on bascule sur l'endpoint suivant.
+        - User-Agent explicite obligatoire : overpass-api.de répond 406 au
+          UA par défaut de httpx.
+        - Overpass peut renvoyer HTTP 200 avec des résultats PARTIELS
+          (timeout/mémoire serveur), signalés par un champ `remark` → on
+          refuse et on bascule sur l'endpoint suivant.
+        - Overpass rate-limit fréquemment (429) : retry avec backoff.
         """
         data = {"data": OVERPASS_QUERY}
+        headers = {"User-Agent": "FuelNow-ETL/1.0 (https://fuelnow.squale.ovh)"}
         last_error: str | None = None
 
         for url in urls:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 for attempt in range(3):
                     try:
-                        resp = await client.post(url, data=data)
+                        resp = await client.post(url, data=data, headers=headers)
                     except httpx.TransportError as e:
                         last_error = f"{url}: {e}"
                         if attempt < 2:
@@ -73,7 +78,12 @@ class OverpassAdapter:
                             continue
                         break
                     if resp.status_code == 200:
-                        return cls(resp.json().get("elements", []))
+                        payload = resp.json()
+                        remark = payload.get("remark")
+                        if remark:
+                            last_error = f"{url}: résultats partiels ({remark})"
+                            break
+                        return cls(payload.get("elements", []))
                     last_error = f"{url}: HTTP {resp.status_code}"
                     if (resp.status_code == 429 or resp.status_code >= 500) and attempt < 2:
                         await asyncio.sleep(2 ** attempt)

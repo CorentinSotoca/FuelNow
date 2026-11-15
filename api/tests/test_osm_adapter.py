@@ -1,6 +1,71 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import httpx
+
 from etl.osm import OverpassAdapter, overpass_endpoints
+
+# Capturé à l'import, avant tout patch : la factory ci-dessous remplace
+# httpx.AsyncClient et ne doit pas s'appeler elle-même.
+_REAL_ASYNC_CLIENT = httpx.AsyncClient
+
+
+def _client_factory(handler):
+    def factory(**kwargs):
+        return _REAL_ASYNC_CLIENT(transport=httpx.MockTransport(handler), **kwargs)
+    return factory
+
+
+async def test_fetch_rejects_partial_results_with_remark():
+    # Un endpoint renvoie 200 + remark (résultats partiels Overpass) → on
+    # bascule sur l'endpoint suivant, qui répond sainement.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "a.test":
+            return httpx.Response(200, json={
+                "remark": "runtime error: Query timed out",
+                "elements": [{"type": "node", "id": 1, "lat": -17.0, "lon": -149.0, "tags": {"brand": "Total"}}],
+            })
+        return httpx.Response(200, json={
+            "elements": [{"type": "node", "id": 2, "lat": 48.0, "lon": 2.0, "tags": {"brand": "Esso"}}],
+        })
+
+    with patch("etl.osm.httpx.AsyncClient", _client_factory(handler)):
+        adapter = await OverpassAdapter.fetch(
+            ["https://a.test/api/interpreter", "https://b.test/api/interpreter"],
+            timeout=5.0,
+        )
+    assert adapter.total_elements == 1
+    assert adapter.parse()[0].osm_id == 2
+
+
+async def test_fetch_falls_back_on_client_error():
+    # 406 (overpass-api.de sans UA identifiant) → endpoint suivant.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "a.test":
+            return httpx.Response(406, text="Not Acceptable")
+        return httpx.Response(200, json={
+            "elements": [{"type": "node", "id": 3, "lat": 48.0, "lon": 2.0, "tags": {"name": "Y"}}],
+        })
+
+    with patch("etl.osm.httpx.AsyncClient", _client_factory(handler)):
+        adapter = await OverpassAdapter.fetch(
+            ["https://a.test/api/interpreter", "https://b.test/api/interpreter"],
+            timeout=5.0,
+        )
+    assert adapter.total_elements == 1
+
+
+async def test_fetch_raises_when_all_endpoints_fail():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"remark": "runtime error", "elements": []})
+
+    with patch("etl.osm.httpx.AsyncClient", _client_factory(handler)):
+        try:
+            await OverpassAdapter.fetch(["https://a.test/api/interpreter"], timeout=5.0)
+            raise AssertionError("devrait lever RuntimeError")
+        except RuntimeError as e:
+            assert "résultats partiels" in str(e)
 
 
 def _node(osm_id: int, lat: float, lon: float, tags: dict) -> dict:

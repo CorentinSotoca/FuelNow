@@ -38,7 +38,7 @@ api/                  FastAPI + ETL (même image Python)
     run.py            Orchestrateur FR + etl_runs (source='fr') + enseignes OSM
     be_run.py         Orchestrateur BE + etl_runs (source='be')
     entrypoint.sh     supercronic (-no-reap, génère crontab au runtime, 2 entries FR+BE)
-  tests/              Tests (13 ETL parse + 12 API search + 10 BE adapter + 5 BE API + 7 ETL load + 10 OSM adapter + 2 OSM load)
+  tests/              Tests (13 ETL parse + 12 API search + 10 BE adapter + 5 BE API + 7 ETL load + 13 OSM adapter + 2 OSM load)
                       conftest.py (fixtures partagées: db_session, cleanup helpers)
   alembic/            Migrations
 web/                  SPA React + Vite
@@ -158,6 +158,9 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 
 ### Enseignes OSM (Overpass)
 
+- **User-Agent obligatoire** dans `OverpassAdapter.fetch` : overpass-api.de répond **406** au UA par défaut de httpx → sans UA, tout le trafic bascule sur le miroir kumi.systems.
+- **Champ `remark`** : Overpass peut renvoyer HTTP 200 avec des résultats PARTIELS (timeout/mémoire serveur) signalés par `remark` — sans ce champ dans la réponse, on a déjà reçu uniquement les stations d'outre-mer (aire France mal servie par le miroir). Le remark est refusé → endpoint suivant.
+- **Garde-fou `OSM_MIN_POIS`** (5000) : ~12k POIs attendus en métropole ; en dessous, refresh refusé et ancien cache conservé.
 - Overpass rate-limit (429) fréquemment : `OverpassAdapter.fetch` retente 3 fois par endpoint avec backoff, puis bascule sur l'endpoint suivant (`OVERPASS_URLS`, endpoints séparés par virgules).
 - Le refresh OSM est **non fatal** : en cas d'échec, l'ancien cache est conservé — les nouvelles stations restent sans enseigne jusqu'au prochain refresh. Un POI sans `brand` ni `name` est ignoré (rien à afficher).
 - Le tag `ref:FR:prix-carburants` peut contenir plusieurs ids séparés par `;` → un enregistrement par id dans `osm_fuel_pois` (la jointure exacte est un simple `station_ref = s.id`).

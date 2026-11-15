@@ -49,9 +49,15 @@ async def _ensure_osm_pois_fresh() -> None:
             timeout=settings.overpass_timeout_s,
         )
         pois = adapter.parse()
-        if not pois:
-            raise RuntimeError("Overpass: aucun POI station-service parsé")
-        logger.info("osm_pois_parsed", count=len(pois))
+        # Garde-fou : ~12k POIs attendus en métropole ; une réponse partielle
+        # (résultats outre-mer seulement, miroir dégradé...) est refusée et
+        # l'ancien cache conservé.
+        if len(pois) < settings.osm_min_pois:
+            raise RuntimeError(
+                f"Overpass: seulement {len(pois)} POIs parsés "
+                f"(minimum attendu {settings.osm_min_pois})"
+            )
+        logger.info("osm_pois_parsed", count=len(pois), elements=adapter.total_elements)
 
         async with async_session() as session:
             async with session.begin():
