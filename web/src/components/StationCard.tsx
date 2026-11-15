@@ -1,7 +1,15 @@
 import { memo } from "react";
 import type { StationSearchItem } from "../types";
 import type { Quartiles } from "../utils";
-import { formatDelta, formatDistance, formatHoursAgo, formatPrice, quartileColor } from "../utils";
+import {
+  formatDelta,
+  formatDistance,
+  formatHoursAgo,
+  formatPrice,
+  quartileColor,
+  stationNavLinks,
+  stationTitle,
+} from "../utils";
 
 interface StationCardProps {
   station: StationSearchItem;
@@ -23,12 +31,8 @@ function StationCardInner({
   const color = quartileColor(station.price_eur, quartiles);
   const isCheapest = station.cheapest_delta_eur === null || station.cheapest_delta_eur === 0;
   const isAutoroute = station.road_type === "A";
-  const labelParts = [station.address, [station.postal_code, station.city].filter(Boolean).join(" ")].filter(Boolean);
-  const label = encodeURIComponent(labelParts.join(", "));
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const itineraryUrl = isIOS
-    ? `https://maps.apple.com/?ll=${station.lat},${station.lon}&q=${label}`
-    : `geo:${station.lat},${station.lon}?q=${station.lat},${station.lon}${label ? `(${label})` : ""}`;
+  const title = stationTitle(station);
+  const nav = stationNavLinks(station);
 
   return (
     <div
@@ -38,7 +42,7 @@ function StationCardInner({
       onMouseLeave={() => onHover(null)}
       role="button"
       tabIndex={0}
-      aria-label={`Station ${station.address ?? ""} ${station.postal_code ?? ""} ${station.city ?? ""}, ${formatPrice(station.price_eur)}, ${formatDistance(station.distance_m)}`}
+      aria-label={`Station ${title ? `${title}, ` : ""}${station.address ?? ""} ${station.postal_code ?? ""} ${station.city ?? ""}, ${formatPrice(station.price_eur)}, ${formatDistance(station.distance_m)}`}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -66,6 +70,8 @@ function StationCardInner({
           )}
         </div>
 
+        {title ? <div className="station-card-title">{title}</div> : null}
+
         <div className="station-card-address">
           {station.address ?? "Adresse non renseignée"}
           {station.postal_code || station.city ? (
@@ -81,14 +87,28 @@ function StationCardInner({
           {station.price_updated_at && (
             <span className="station-card-maj">MAJ {formatHoursAgo(station.price_updated_at)}</span>
           )}
-          <a
-            href={itineraryUrl}
-            className="itinerary-btn"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11" /></svg>
-            Itinéraire
-          </a>
+          <div className="station-card-nav">
+            <a
+              href={nav.waze}
+              className="nav-btn nav-btn-waze"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Ouvrir l'enseigne ${title || "de la station"} dans Waze`}
+            >
+              Waze
+            </a>
+            <a
+              href={nav.maps}
+              className="nav-btn nav-btn-maps"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Ouvrir l'enseigne ${title || "de la station"} dans Google Maps`}
+            >
+              Maps
+            </a>
+          </div>
         </div>
       </div>
     </div>

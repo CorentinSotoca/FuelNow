@@ -200,7 +200,9 @@ function App() {
           gpsErrorRef.current(err);
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      // maximumAge 60000 : premier fix instantané si le navigateur a une
+      // position en cache (< 1 min), le watchPosition rafraîchit juste après.
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
     );
 
     watchIdRef.current = navigator.geolocation.watchPosition(

@@ -23,6 +23,8 @@ export interface StationSearchItem {
   price_updated_at: string | null;
   outage: "none" | "temporary" | "definitive";
   cheapest_delta_eur: number | null;
+  brand: string | null;
+  osm_name: string | null;
 }
 
 export interface StationSearchResponse {

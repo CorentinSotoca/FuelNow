@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     etl_be_cron: str = "0 7 * * *"
     etl_min_rows: int = Field(5000, gt=0)
     etl_min_ratio: float = Field(0.8, ge=0, le=1)
+    overpass_urls: str = "https://overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter"
+    osm_refresh_days: int = Field(7, ge=1)
+    overpass_timeout_s: float = Field(900.0, gt=0)
     rate_limit_per_min: int = Field(60, gt=0)
     search_radius_max_m: int = Field(30000, gt=0)
     cache_ttl_s: int = 900

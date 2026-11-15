@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FUEL_TYPES, OUTAGE_TYPES
 from etl.models import StationRecord
+from etl.osm import OsmFuelPoiRecord
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,18 @@ _prices_stg = Table(
     Column("price_eur", Numeric(5, 3)),
     Column("price_maj", TIMESTAMP(timezone=True)),
     Column("outage", PG_ENUM(*OUTAGE_TYPES, name="outage_type", create_type=False)),
+    prefixes=["TEMPORARY"],
+)
+
+_osm_pois_stg = Table(
+    "osm_fuel_pois_stg", _metadata,
+    Column("osm_type", Text),
+    Column("osm_id", BigInteger),
+    Column("station_ref", BigInteger),
+    Column("brand", Text),
+    Column("osm_name", Text),
+    Column("geom", Geography("POINT", srid=4326)),
+    Column("updated_at", TIMESTAMP(timezone=True)),
     prefixes=["TEMPORARY"],
 )
 
@@ -117,11 +130,105 @@ async def load_stations_atomically(
     for i in range(0, len(price_rows), batch_size):
         await session.execute(insert(_prices_stg), price_rows[i : i + batch_size])
 
-    await session.execute(text("TRUNCATE station_prices, stations"))
+    # station_brands référence stations (FK) : Postgres refuse de tronquer
+    # stations sans les tables enfants dans la liste.
+    await session.execute(text("TRUNCATE station_brands, station_prices, stations"))
     await session.execute(text("INSERT INTO stations SELECT * FROM stations_stg"))
     await session.execute(text("INSERT INTO station_prices SELECT * FROM station_prices_stg"))
 
     return rows_stations, rows_prices
+
+
+async def get_osm_pois_age_hours(session: AsyncSession) -> float | None:
+    """Âge du cache OSM en heures (None si vide / jamais chargé)."""
+    result = await session.execute(text("SELECT MAX(updated_at) FROM osm_fuel_pois"))
+    ts = result.scalar_one_or_none()
+    if ts is None:
+        return None
+    return (datetime.now(UTC) - ts).total_seconds() / 3600
+
+
+async def load_osm_pois_atomically(
+    session: AsyncSession,
+    pois: list[OsmFuelPoiRecord],
+) -> int:
+    """Remplacement intégral du cache OSM (TRUNCATE + INSERT atomique)."""
+    await session.execute(text(
+        "CREATE TEMP TABLE osm_fuel_pois_stg (LIKE osm_fuel_pois INCLUDING ALL) ON COMMIT DROP"
+    ))
+
+    now = datetime.now(UTC)
+    rows = [
+        {
+            "osm_type": p.osm_type,
+            "osm_id": p.osm_id,
+            "station_ref": p.station_ref,
+            "brand": p.brand,
+            "osm_name": p.osm_name,
+            "geom": f"SRID=4326;POINT({p.lon} {p.lat})",
+            "updated_at": now,
+        }
+        for p in pois
+    ]
+
+    batch_size = 500
+    for i in range(0, len(rows), batch_size):
+        await session.execute(insert(_osm_pois_stg), rows[i : i + batch_size])
+
+    await session.execute(text("TRUNCATE osm_fuel_pois"))
+    await session.execute(text("INSERT INTO osm_fuel_pois SELECT * FROM osm_fuel_pois_stg"))
+
+    return len(rows)
+
+
+_BRAND_MATCH_SQL = """
+    INSERT INTO station_brands (station_id, brand, osm_name, match_type, matched_at)
+    SELECT s.id, u.brand, u.osm_name, u.match_type, now()
+    FROM stations s
+    JOIN LATERAL (
+        SELECT u2.brand, u2.osm_name, u2.match_type
+        FROM (
+            (
+                SELECT p.brand AS brand, p.osm_name AS osm_name, 'ref' AS match_type, 0 AS prio
+                FROM osm_fuel_pois p
+                WHERE p.station_ref = s.id
+                ORDER BY (p.brand IS NOT NULL) DESC, p.osm_id
+                LIMIT 1
+            )
+            UNION ALL
+            (
+                SELECT p.brand, p.osm_name, 'nearby', 1
+                FROM osm_fuel_pois p
+                WHERE ST_DWithin(p.geom, s.geom, 150)
+                ORDER BY ST_Distance(p.geom, s.geom)
+                LIMIT 1
+            )
+        ) AS u2
+        ORDER BY u2.prio
+        LIMIT 1
+    ) AS u ON true
+"""
+
+
+async def rebuild_station_brands(session: AsyncSession) -> dict[str, int]:
+    """Associe chaque station à son enseigne OSM.
+
+    Match exact par ref:FR:prix-carburants en priorité, sinon le POI OSM le
+    plus proche à moins de 150 m. Vide et reconstruit station_brands.
+    """
+    await session.execute(text("TRUNCATE station_brands"))
+    await session.execute(text(_BRAND_MATCH_SQL))
+
+    counts_result = await session.execute(
+        text("SELECT match_type, count(*) FROM station_brands GROUP BY match_type")
+    )
+    counts = {row[0]: row[1] for row in counts_result.fetchall()}
+
+    return {
+        "total": sum(counts.values()),
+        "by_ref": counts.get("ref", 0),
+        "nearby": counts.get("nearby", 0),
+    }
 
 
 async def purge_etl_runs(session: AsyncSession, days: int = 30) -> None:

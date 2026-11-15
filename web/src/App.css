@@ -316,27 +316,47 @@
   color: #9ca3af;
 }
 
-.itinerary-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #fff;
-  background: #2563eb;
-  text-decoration: none;
-  padding: 8px 14px;
-  border-radius: 8px;
+.station-card-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 0.2rem;
+}
+
+.station-card-nav {
   margin-left: auto;
+  display: inline-flex;
+  gap: 0.35rem;
   flex-shrink: 0;
 }
 
-.itinerary-btn:hover {
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 6px 11px;
+  border-radius: 8px;
+}
+
+.nav-btn-waze {
+  background: #2563eb;
+  color: #fff;
+}
+
+.nav-btn-waze:hover {
   background: #1d4ed8;
 }
 
-.itinerary-btn svg {
-  flex-shrink: 0;
+.nav-btn-maps {
+  background: #eef2ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+.nav-btn-maps:hover {
+  background: #e0e7ff;
 }
 
 /* States */
@@ -447,6 +467,12 @@
   font-size: 1.1rem;
   font-weight: 700;
   color: #16a34a;
+}
+
+.station-popup-brand {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #111827;
 }
 
 .station-popup-addr {
@@ -683,9 +709,9 @@
     font-size: 1.05rem;
   }
 
-  .itinerary-btn {
-    font-size: 0.9rem;
-    padding: 10px 16px;
+  .nav-btn {
+    font-size: 0.82rem;
+    padding: 8px 13px;
   }
 
   /* Hide hint when sheet collapsed, keep only handle visible */

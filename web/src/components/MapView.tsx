@@ -11,7 +11,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { GpsState } from "../App";
 import type { LatLon, StationSearchItem } from "../types";
 import { circleGeoJSON } from "../geo";
-import { formatDistance, formatPrice, priceQuartiles, quartileColor } from "../utils";
+import { formatDistance, formatPrice, priceQuartiles, quartileColor, stationTitle } from "../utils";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 
 setWorkerUrl(workerUrl);
@@ -317,7 +317,7 @@ export function MapView({
           applyStationElStyle(el, station, color, isSel, isHov);
           el.setAttribute("role", "button");
           el.setAttribute("tabindex", "0");
-          el.setAttribute("aria-label", `Station ${station.address ?? ""} ${station.postal_code ?? ""} ${station.city ?? ""}, ${formatPrice(station.price_eur)}`);
+          el.setAttribute("aria-label", `Station ${stationTitle(station) ? `${stationTitle(station)}, ` : ""}${station.address ?? ""} ${station.postal_code ?? ""} ${station.city ?? ""}, ${formatPrice(station.price_eur)}`);
           el.addEventListener("click", (ev) => {
             ev.stopPropagation();
             callbacksRef.current.onStationClick(station.id);
@@ -372,6 +372,14 @@ export function MapView({
 
     const popupContainer = document.createElement("div");
     popupContainer.className = "station-popup";
+
+    const title = stationTitle(station);
+    if (title) {
+      const brandEl = document.createElement("div");
+      brandEl.className = "station-popup-brand";
+      brandEl.textContent = title;
+      popupContainer.appendChild(brandEl);
+    }
 
     const priceEl = document.createElement("div");
     priceEl.className = "station-popup-price";

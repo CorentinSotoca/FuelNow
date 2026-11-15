@@ -85,10 +85,34 @@ CREATE INDEX station_prices_fuel_price_idx
 
 -- métadonnées de run ETL (1 ligne / exécution, purge > 30j)
 etl_runs(id serial pk, started_at, finished_at, status, rows_stations int,
-         rows_prices int, source_bytes bigint, error text);
+         rows_prices int, source_bytes bigint, error text, source text DEFAULT 'fr');
+
+-- cache des stations-service OSM (Overpass, amenity=fuel), remplacé
+-- intégralement à chaque refresh hebdomadaire ; ~30k POIs
+osm_fuel_pois(
+  osm_type    text NOT NULL,                -- node | way | relation
+  osm_id      bigint NOT NULL,
+  station_ref bigint,                       -- tag ref:FR:prix-carburants (id pdv), NULL si absent
+  brand       text,                         -- tag brand
+  osm_name    text,                         -- tag name
+  geom        geography(Point,4326) NOT NULL,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX osm_fuel_pois_station_ref_idx ON osm_fuel_pois (station_ref);
+CREATE INDEX osm_fuel_pois_geom_gix ON osm_fuel_pois USING GIST (geom);
+
+-- enseigne par station (au plus 1 ligne) : match exact par ref, sinon
+-- plus proche POI OSM à < 150 m ; reconstruite à chaque run FR
+station_brands(
+  station_id  bigint PRIMARY KEY REFERENCES stations(id) ON DELETE CASCADE,
+  brand       text,
+  osm_name    text,
+  match_type  text NOT NULL,                -- 'ref' | 'nearby'
+  matched_at  timestamptz NOT NULL DEFAULT now()
+);
 ```
 
-Pas d'historique : `station_prices` est intégralement remplacée à chaque run. Volumétrie : ~10k stations × ~6 carburants ≈ 60k lignes → **< 50 Mo** avec index. Impact disque négligeable ; prévoir 2 Go pour le volume pgdata (WAL + marge).
+Pas d'historique : `station_prices` est intégralement remplacée à chaque run. Volumétrie : ~10k stations × ~6 carburants ≈ 60k lignes + ~30k POIs OSM → **< 50 Mo** avec index. Impact disque négligeable ; prévoir 2 Go pour le volume pgdata (WAL + marge).
 
 Purge : `DELETE FROM etl_runs WHERE started_at < now() - interval '30 days'` en fin de run. Pas de partitionnement ni de compaction nécessaires ; `VACUUM ANALYZE` post-swap (voir §5).
 
@@ -99,9 +123,10 @@ Purge : `DELETE FROM etl_runs WHERE started_at < now() - interval '30 days'` en 
 3. **Normalisation** : dépivot des 6 carburants ; `price_eur` rejeté si hors [0.5, 5.0] ; `geom` rejeté si hors bbox (-65/-25/20/55, inclut DROM et frontières) ; dédoublonnage sur `id`.
 4. **Garde-fou qualité** : si `count(stations) < 80 %` du dernier run réussi (filtré par `source='fr'`), ou < 5000 → run `failed`, **aucune écriture**, données précédentes conservées.
 5. **Chargement** : tables `stations_stg` / `station_prices_stg` (`TRUNCATE` + `COPY`), puis une seule transaction :
-   `BEGIN; TRUNCATE station_prices, stations; INSERT INTO stations SELECT * FROM stations_stg; INSERT INTO station_prices SELECT * FROM station_prices_stg; COMMIT;`
+   `BEGIN; TRUNCATE station_brands, station_prices, stations; INSERT INTO stations SELECT * FROM stations_stg; INSERT INTO station_prices SELECT * FROM station_prices_stg; COMMIT;`
    → jamais d'état partiel visible. (Le swap par `ALTER TABLE ... RENAME` est évité : casse les FK et les vues ; inutile à cette volumétrie.)
-6. **Post** : `ANALYZE`, purge `etl_runs`, log JSON structuré via **structlog**, mise à jour `/health` de l'API via lecture de `etl_runs`. Nettoyage des runs orphelins (`cleanup_orphaned_runs()`) au démarrage de chaque ETL.
+6. **Enseignes OSM** : avant la transaction principale, si le cache `osm_fuel_pois` a plus de `OSM_REFRESH_DAYS` jours, téléchargement Overpass (`nwr["amenity"="fuel"]` sur l'aire France, endpoints avec fallback et retry) et remplacement atomique du cache — **non fatal** en cas d'échec (ancien cache conservé). Dans la même transaction que le swap des stations : rebuild de `station_brands` (match exact `station_ref = stations.id`, sinon POI le plus proche à < 150 m via `ST_DWithin`/`ST_Distance`) → l'API ne voit jamais les enseignes vides.
+7. **Post** : `ANALYZE`, purge `etl_runs`, log JSON structuré via **structlog**, mise à jour `/health` de l'API via lecture de `etl_runs`. Nettoyage des runs orphelins (`cleanup_orphaned_runs()`) au démarrage de chaque ETL.
 
 Observabilité : logs JSON stdout via structlog (récupérés par `docker logs` / loki), `GET /health` renvoyant `last_success_at` + `age_hours`, et `stale=true` si > 26 h. Alerting minimal optionnel : appel webhook (Discord/ntfy) si run `failed`.
 

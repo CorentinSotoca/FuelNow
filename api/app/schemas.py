@@ -38,6 +38,8 @@ class StationSearchItem(BaseModel):
     price_updated_at: datetime | None
     outage: str
     cheapest_delta_eur: float | None
+    brand: str | None = None
+    osm_name: str | None = None
 
 
 class StationSearchResponse(BaseModel):
@@ -69,6 +71,8 @@ class StationDetailResponse(BaseModel):
     lon: float
     services: dict | None
     opening_hours: dict | None
+    brand: str | None = None
+    osm_name: str | None = None
     prices: list[StationPriceDetail]
 
 

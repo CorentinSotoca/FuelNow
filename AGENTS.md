@@ -31,13 +31,14 @@ api/                  FastAPI + ETL (même image Python)
   etl/                Pipeline ETL
     adapters.py       OdsJsonAdapter (fetch + dépivot)
     be_adapter.py     StatbelAdapter (fetch + parse prix max BE)
+    osm.py            OverpassAdapter (fetch Overpass + parse POIs OSM → enseignes)
     models.py         StationRecord, StationPriceRecord, Fuel, Outage
-    load.py           staging tables + TRUNCATE/INSERT atomique
+    load.py           staging tables + TRUNCATE/INSERT atomique + rebuild enseignes
     runs.py           Shared helpers (create_run, update_run, send_alert, cleanup_orphaned_runs)
-    run.py            Orchestrateur FR + etl_runs (source='fr')
+    run.py            Orchestrateur FR + etl_runs (source='fr') + enseignes OSM
     be_run.py         Orchestrateur BE + etl_runs (source='be')
     entrypoint.sh     supercronic (-no-reap, génère crontab au runtime, 2 entries FR+BE)
-  tests/              Tests (13 ETL parse + 11 API search + 10 BE adapter + 5 BE API + 7 ETL load)
+  tests/              Tests (13 ETL parse + 12 API search + 10 BE adapter + 5 BE API + 7 ETL load + 10 OSM adapter + 2 OSM load)
                       conftest.py (fixtures partagées: db_session, cleanup helpers)
   alembic/            Migrations
 web/                  SPA React + Vite
@@ -136,6 +137,8 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 - Prix bornés [0.5, 5.0] € ; geom hors bbox France rejeté (BBOX très large : -65/-25/20/55 pour inclure DROM et frontières).
 - ENUMs créés manuellement dans la migration (postgresql.ENUM avec `create_type=False`).
 - Belgique : pas d'open data par station, seuls les prix maximum réglementés (Statbel) sont affichés.
+- Enseignes : issues d'OpenStreetMap (Overpass `amenity=fuel`), match exact par tag `ref:FR:prix-carburants` (même id que le flux officiel), sinon POI le plus proche à < 150 m. Cache `osm_fuel_pois` rafraîchi hebdomadairement (non fatal), `station_brands` reconstruite à chaque run FR dans la même transaction que le swap des stations.
+- Waze/Google Maps ciblent le POI de l'enseigne (requête texte « enseigne, adresse, cp ville »), pas un pin sur l'adresse brute. Sans enseigne : retombée sur les coordonnées.
 - `etl_runs.source` distingue les runs FR (`source='fr'`) des runs BE (`source='be'`).
 - `be_max_prices.fuel_code` est un TEXT simple, indépendant de l'ENUM `fuel_type`.
 - Belgique : affichage hybride — les stations FR frontalières restent visibles, le panneau BE s'affiche en plus.
@@ -153,6 +156,14 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 - **Retry réseau** : `OdsJsonAdapter.fetch` et `StatbelAdapter.fetch` retentent 3 fois sur `httpx.TransportError` avec backoff exponentiel.
 - **Runs orphelins** : `cleanup_orphaned_runs()` est appelé au démarrage de chaque ETL pour marquer `failed` les runs restés `running` (crash).
 
+### Enseignes OSM (Overpass)
+
+- Overpass rate-limit (429) fréquemment : `OverpassAdapter.fetch` retente 3 fois par endpoint avec backoff, puis bascule sur l'endpoint suivant (`OVERPASS_URLS`, endpoints séparés par virgules).
+- Le refresh OSM est **non fatal** : en cas d'échec, l'ancien cache est conservé — les nouvelles stations restent sans enseigne jusqu'au prochain refresh. Un POI sans `brand` ni `name` est ignoré (rien à afficher).
+- Le tag `ref:FR:prix-carburants` peut contenir plusieurs ids séparés par `;` → un enregistrement par id dans `osm_fuel_pois` (la jointure exacte est un simple `station_ref = s.id`).
+- `station_brands` a une FK vers `stations` : le `TRUNCATE` de `load_stations_atomically` doit lister les trois tables (`station_brands, station_prices, stations`), sinon Postgres refuse de tronquer `stations`.
+- Le rebuild des enseignes tourne dans la MÊME transaction que le remplacement des stations → l'API ne voit jamais `station_brands` vide.
+
 ### API
 
 - Requête search en SQL brut (CTE `filtered`+`agg`) car ORM peu adapté à `ST_DWithin`/`ST_Distance`/agrégats de fenêtre.
@@ -167,14 +178,14 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 
 - **maplibre-gl v6 + Vite** : `optimizeDeps.exclude: ['maplibre-gl']` dans `vite.config.ts` pour fix le worker URL en dev. **En prod (build)**, il faut en plus appeler `setWorkerUrl()` avec un import `maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url` (voir `MapView.tsx`) — sans ça, le worker n'est pas extrait par Vite, la source GeoJSON du cercle ne s'affiche jamais (404 silencieux sur `maplibre-gl-worker.mjs`).
 - **Cercle de rayon** : source GeoJSON `search-radius` + 2 layers (`fill` + `line` pointillés) alimentées par `circleGeoJSON()` dans `geo.ts`. Se met à jour via `useEffect` sur `[point, radiusM]`.
-- **Bouton itinéraire** : utilise un URI `geo:lat,lon?q=lat,lon(Label)` (RFC 5870) — s'ouvre dans l'app de maps par défaut sur mobile. Pas de `target="_blank"`.
+- **Boutons Waze/Maps** : construits par `stationNavLinks()` dans `utils.ts` — Google Maps reçoit une requête texte « enseigne, adresse, cp ville » (ouvre la fiche de l'établissement), Waze reçoit `q=enseigne ville` + `ll=lat,lon` + `navigate=yes` (résout le POI nommé). Sans enseigne : retombée sur les coordonnées seules. L'ancien URI `geo:` / Apple Maps a été retiré. `target="_blank" rel="noopener noreferrer"` + `stopPropagation` (le clic ne sélectionne pas la carte).
 - **Popup station** : affiche prix, adresse, code postal + ville, distance.
 - **Marqueurs HTML MapLibre** : ne **pas** mettre `transform: translate(-50%,-50%)` dans le style de l'élément — MapLibre gère lui-même le positionnement. Ne **pas** utiliser `replaceWith` pour mettre à jour un marker — appliquer les styles in-place sur `marker.getElement()` via `applyStationElStyle`.
 - **TypeScript** : `erasableSyntaxOnly: false` dans `tsconfig.app.json` (bloque les classes avec param properties comme ApiError).
 - Classes CSS popup en maplibre-gl v6 : préfixées `maplibregl-` (pas `maplibre-`).
 - **Zone belge** : `isNearBelgium(lat, lon)` dans `utils.ts` utilise un polygone (algorithme du ray-casting) qui suit la frontière franco-belge + ~20 km de tampon côté français. Une bbox rectangulaire ne fonctionne pas car elle inclurait des villes françaises éloignées de la frontière (Arras, Cambrai, Béthune, Lens, Douai). Le polygone exclut ces villes tout en incluant Lille, Valenciennes, Maubeuge, Dunkerque, Hirson, Givet. Quand `isNearBelgium` est vrai, le hook `useDebouncedSearch` fetch les prix BE via `GET /api/be/prices` et `BeMaxPricePanel` s'affiche en haut des résultats. Les stations FR frontalières restent visibles (affichage hybride).
 - **CSP & MapLibre** : la CSP a été retirée de `nginx.conf` car elle bloquait les tuiles OSM. MapLibre v6 charge les tuiles via `fetch()` (donc `connect-src`, pas `img-src`), crée des blob URLs pour les images (`img-src blob:`) et précharge le worker via blob (`worker-src blob:`). De plus, `https://*.tile.openstreetmap.org` ne matche pas `https://tile.openstreetmap.org` (le wildcard `*.` exige un sous-domaine). Si la CSP est réimplémentée, il faut : `connect-src 'self' https://tile.openstreetmap.org https://*.tile.openstreetmap.org ; img-src 'self' https://tile.openstreetmap.org https://*.tile.openstreetmap.org data: blob: ; worker-src 'self' blob:`.
-- **Permissions-Policy geolocation** : le reverse proxy hôte (squale.ovh) ajoute `Permissions-Policy: geolocation=()` qui bloque le GPS. À retirer dans la config nginx hôte pour réactiver la géoloc.
+- **Permissions-Policy geolocation** : le nginx hôte (squale.ovh) bloquait la géoloc via `geolocation=()` dans le snippet partagé `/etc/nginx/snippets/security-headers.conf` — corrigé en `geolocation=(self)` le 2026-11-15. La géoloc nécessite toujours HTTPS (déjà le cas).
 
 ### Supercronic (ETL)
 

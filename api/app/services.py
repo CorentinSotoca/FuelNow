@@ -32,9 +32,12 @@ _SEARCH_SQL_TEMPLATE = """
             ST_Distance(s.geom, ST_MakePoint(:lon, :lat)::geography) AS distance_m,
             sp.price_eur,
             sp.price_maj,
-            COALESCE(sp.outage, 'none') AS outage
+            COALESCE(sp.outage, 'none') AS outage,
+            sb.brand,
+            sb.osm_name
         FROM stations s
         LEFT JOIN station_prices sp ON sp.station_id = s.id AND sp.fuel = :fuel
+        LEFT JOIN station_brands sb ON sb.station_id = s.id
         WHERE ST_DWithin(s.geom, ST_MakePoint(:lon, :lat)::geography, :radius_m)
           AND (:include_unpriced OR sp.price_eur IS NOT NULL)
           AND (:include_outage OR COALESCE(sp.outage, 'none') = 'none')
@@ -108,6 +111,8 @@ async def search_stations(
             "price_eur": float(r["price_eur"]) if r["price_eur"] is not None else None,
             "price_updated_at": r["price_maj"],
             "outage": r["outage"],
+            "brand": r["brand"],
+            "osm_name": r["osm_name"],
             "cheapest_delta_eur": (
                 float(r["price_eur"]) - float(min_price)
                 if r["price_eur"] is not None and min_price is not None
@@ -133,9 +138,12 @@ async def get_station_detail(session: AsyncSession, station_id: int) -> dict[str
     result = await session.execute(
         text(
             """
-            SELECT id, address, city, postal_code, dept_code, dept_name, region_name, road_type,
-                   ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon, services, opening_hours
-            FROM stations WHERE id = :id
+            SELECT s.id, s.address, s.city, s.postal_code, s.dept_code, s.dept_name, s.region_name, s.road_type,
+                   ST_Y(s.geom::geometry) AS lat, ST_X(s.geom::geometry) AS lon, s.services, s.opening_hours,
+                   sb.brand, sb.osm_name
+            FROM stations s
+            LEFT JOIN station_brands sb ON sb.station_id = s.id
+            WHERE s.id = :id
             """
         ),
         {"id": station_id},
@@ -171,6 +179,8 @@ async def get_station_detail(session: AsyncSession, station_id: int) -> dict[str
         "lon": float(station["lon"]),
         "services": station["services"],
         "opening_hours": station["opening_hours"],
+        "brand": station["brand"],
+        "osm_name": station["osm_name"],
         "prices": prices,
     }
 

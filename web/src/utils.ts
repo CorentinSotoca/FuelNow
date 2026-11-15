@@ -55,6 +55,50 @@ export function formatDelta(delta: number | null): string {
   return `+${delta.toFixed(3).replace(".", ",")} €`;
 }
 
+/**
+ * Titre d'une station : l'enseigne OSM (brand), le nom, ou les deux
+ * combinés quand le nom ne contient pas déjà l'enseigne.
+ */
+export function stationTitle(station: Pick<StationSearchItem, "brand" | "osm_name">): string {
+  const brand = station.brand?.trim();
+  const name = station.osm_name?.trim();
+  if (brand && name && !name.toLowerCase().includes(brand.toLowerCase())) {
+    return `${brand} – ${name}`;
+  }
+  return name || brand || "";
+}
+
+export interface StationNavLinks {
+  waze: string;
+  maps: string;
+}
+
+/**
+ * Liens de navigation vers l'enseigne (le POI Maps/Waze de la station),
+ * pas un simple pin posé sur l'adresse.
+ *
+ * - Google Maps : requête texte « enseigne, adresse, cp ville » → ouvre la
+ *   fiche de l'établissement (son propre place card). Sans enseigne, on
+ *   retombe sur les coordonnées.
+ * - Waze : `q=enseigne ville` borné par `ll=lat,lon` → Waze résout le POI
+ *   nommé près de la station et y navigue.
+ */
+export function stationNavLinks(station: StationSearchItem): StationNavLinks {
+  const title = stationTitle(station);
+  const cityLine = [station.postal_code, station.city].filter(Boolean).join(" ");
+  const fullQuery = [title, station.address, cityLine].filter(Boolean).join(", ");
+
+  const mapsQuery = title ? encodeURIComponent(fullQuery) : `${station.lat},${station.lon}`;
+  const wazeParams = title
+    ? `q=${encodeURIComponent(`${title} ${station.city ?? ""}`.trim())}&ll=${station.lat},${station.lon}`
+    : `ll=${station.lat},${station.lon}`;
+
+  return {
+    waze: `https://waze.com/ul?${wazeParams}&navigate=yes`,
+    maps: `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`,
+  };
+}
+
 const BELGIUM_BUFFER_POLYGON: [number, number][] = [
   [51.55, 2.35],
   [51.55, 6.30],

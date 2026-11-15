@@ -88,6 +88,63 @@ async def test_search_default_excludes_unpriced_and_outage(client, seeded_db):
     assert data["total"] == 3
 
 
+BRAND_STATION_ID = 900000006
+
+
+async def test_search_returns_station_brand(client, seeded_db):
+    async with async_session() as session:
+        await session.execute(
+            text(
+                "INSERT INTO stations (id, address, city, postal_code, road_type, geom) "
+                "VALUES (:id, 'Test', 'Test', '00000', 'R', ST_MakePoint(0.001, 0.001)::geography) "
+                "ON CONFLICT (id) DO NOTHING"
+            ),
+            {"id": BRAND_STATION_ID},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO station_prices (station_id, fuel, price_eur, price_maj, outage) "
+                "VALUES (:sid, 'gazole', 1.350, now(), 'none') "
+                "ON CONFLICT (station_id, fuel) DO NOTHING"
+            ),
+            {"sid": BRAND_STATION_ID},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO station_brands (station_id, brand, osm_name, match_type) "
+                "VALUES (:sid, 'Intermarché', 'Intermarché Contact Test', 'ref') "
+                "ON CONFLICT (station_id) DO NOTHING"
+            ),
+            {"sid": BRAND_STATION_ID},
+        )
+        await session.commit()
+
+    try:
+        resp = await client.get(
+            "/api/stations/search",
+            params={"lat": 0.0, "lon": 0.0, "radius_m": 1000, "fuel": "gazole"},
+        )
+        assert resp.status_code == 200
+        item = next(i for i in resp.json()["items"] if i["id"] == BRAND_STATION_ID)
+        assert item["brand"] == "Intermarché"
+        assert item["osm_name"] == "Intermarché Contact Test"
+    finally:
+        async with async_session() as session:
+            await session.execute(
+                text("DELETE FROM station_brands WHERE station_id = :sid"),
+                {"sid": BRAND_STATION_ID},
+            )
+            await session.execute(
+                text("DELETE FROM station_prices WHERE station_id = :sid"),
+                {"sid": BRAND_STATION_ID},
+            )
+            await session.execute(
+                text("DELETE FROM stations WHERE id = :sid"),
+                {"sid": BRAND_STATION_ID},
+            )
+            await session.commit()
+
+
 async def test_search_sort_distance(client, seeded_db):
     resp = await client.get(
         "/api/stations/search",
