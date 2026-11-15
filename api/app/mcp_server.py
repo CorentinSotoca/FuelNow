@@ -12,7 +12,7 @@ mcp = MCPServer("FuelNow")
 async def search_stations(
     lat: float,
     lon: float,
-    fuel: Literal["gazole", "sp95", "sp98", "e10", "e85", "gplc"] = "gazole",
+    fuel: Literal["gazole", "sp95", "sp98", "e10", "e85", "gplc", "sp95-e10"] = "gazole",
     radius_m: int = 5000,
     sort: Literal["price", "distance"] = "price",
     page: int = 1,
@@ -20,13 +20,14 @@ async def search_stations(
 ) -> dict:
     """Find the cheapest fuel stations near a geographic point in France.
 
-    Returns stations sorted by fuel price or distance, with price, address,
-    and distance from the search point.
+    Returns stations sorted by fuel price or distance, with price, brand,
+    address, and distance from the search point.
 
     Args:
         lat: Latitude (e.g. 48.8566 for Paris)
         lon: Longitude (e.g. 2.3522 for Paris)
-        fuel: Fuel type — one of: gazole, sp95, sp98, e10, e85, gplc
+        fuel: Fuel type — one of: gazole, sp95, sp98, e10, e85, gplc, or
+              sp95-e10 (SP95 and SP95-E10 merged: cheapest of the two per station)
         radius_m: Search radius in meters (500–30000, default 5000)
         sort: Sort order — "price" (cheapest first) or "distance" (nearest first)
         page: Page number (1-based)
@@ -34,7 +35,8 @@ async def search_stations(
 
     Returns:
         Dict with items (list of stations), total, page, page_size,
-        data_updated_at, and stale flag.
+        min_price_eur (cheapest price in the radius), data_updated_at,
+        and stale flag.
     """
     async with async_session() as session:
         return await services.search_stations(
@@ -64,9 +66,10 @@ async def get_station_detail(station_id: int) -> dict:
 
 @mcp.tool()
 async def list_fuels() -> list[dict]:
-    """List all available fuel types in France.
+    """List the selectable fuel types.
 
-    Returns the 6 fuel codes and their labels: gazole, sp95, sp98, e10, e85, gplc.
+    Returns 5 fuel codes and their labels: gazole, sp95-e10 (SP95 and E10
+    merged — cheapest of the two per station), sp98, e85, gplc.
     """
     return services.list_fuels()
 

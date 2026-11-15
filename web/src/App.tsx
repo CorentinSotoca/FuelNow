@@ -8,7 +8,7 @@ import { RadiusControl } from "./components/RadiusControl";
 import { ResultsList } from "./components/ResultsList";
 import { useDebouncedSearch } from "./hooks/useDebouncedSearch";
 import type { FuelCode, FuelInfo, LatLon } from "./types";
-import { formatPrice } from "./utils";
+import { bePriceForFuel, formatPrice } from "./utils";
 
 const DEFAULT_RADIUS_M = 5000;
 const DEFAULT_FUEL: FuelCode = "gazole";
@@ -83,8 +83,11 @@ function App() {
   });
   const [fuel, setFuel] = useState<FuelCode>(() => {
     try {
-      const saved = localStorage.getItem(SAVED_FUEL_KEY);
-      if (saved && (["gazole", "sp95", "sp98", "e10", "e85", "gplc"] as const).includes(saved as FuelCode)) {
+      let saved: string | null = localStorage.getItem(SAVED_FUEL_KEY);
+      // Fusion SP95/E10 : les anciennes sélections migrées vers le carburant fusionné.
+      if (saved === "sp95" || saved === "e10") saved = "sp95-e10";
+      const validFuels = ["gazole", "sp95-e10", "sp98", "e85", "gplc"] as const;
+      if (saved && (validFuels as readonly string[]).includes(saved)) {
         return saved as FuelCode;
       }
     } catch {}
@@ -137,7 +140,7 @@ function App() {
     });
   });
 
-  const { data, loading, loadingMore, error, retry, loadMore, inBelgium, bePrices, beLoading } = useDebouncedSearch({
+  const { data, loading, loadingMore, error, retry, loadMore, bePrices, beLoading } = useDebouncedSearch({
     point,
     radiusM,
     fuel,
@@ -323,8 +326,14 @@ function App() {
     setSheetState("half");
   };
 
-  const prices = data?.items?.map((s) => s.price_eur).filter((p): p is number => p !== null) ?? [];
-  const cheapestPrice = prices.length ? Math.min(...prices) : null;
+  // Vrai minimum du rayon (calculé côté API, indépendant du tri/pagination).
+  const cheapestPrice = data?.min_price_eur ?? null;
+
+  // Panneau Belgique : affiché uniquement si le prix max belge est plus
+  // avantageux que le meilleur prix français du rayon (ou s'il n'y a aucune
+  // station française — le prix belge est alors la seule info disponible).
+  const bePrice = bePriceForFuel(bePrices, fuel);
+  const showBePanel = !!point && !!bePrice && (cheapestPrice === null || cheapestPrice > bePrice.price_eur);
 
   return (
     <div className="app-shell">
@@ -381,14 +390,8 @@ function App() {
             <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
           </div>
           <div className="sheet-peek">
-            {point && inBelgium && bePrices && bePrices.prices.length > 0 ? (
-              (() => {
-                const bePrice = bePrices.prices.find((p) => p.fuel_code === fuel);
-                if (bePrice) {
-                  return <>🇧🇪 Prix max : <strong>{formatPrice(bePrice.price_eur)}</strong></>;
-                }
-                return <>🇧🇪 Prix max non disponible pour ce carburant</>;
-              })()
+            {point && showBePanel && bePrice ? (
+              <>🇧🇪 Prix max : <strong>{formatPrice(bePrice.price_eur)}</strong></>
             ) : point && data && cheapestPrice !== null ? (
               <>
                 <strong>{data.total}</strong> station{data.total > 1 ? "s" : ""}
@@ -422,7 +425,7 @@ function App() {
           {!online && (
             <div className="offline-banner">Mode hors-ligne — données potentiellement anciennes</div>
           )}
-          {point && inBelgium && (
+          {point && showBePanel && (
             <BeMaxPricePanel bePrices={bePrices} loading={beLoading} fuel={fuel} />
           )}
           {point && (
@@ -440,7 +443,7 @@ function App() {
               onRetry={retry}
               onExpandRadius={handleExpandRadius}
               onLoadMore={loadMore}
-              inBelgium={inBelgium}
+              bePanelVisible={showBePanel}
             />
           )}
         </div>

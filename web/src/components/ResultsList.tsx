@@ -19,7 +19,7 @@ interface ResultsListProps {
   onRetry: () => void;
   onExpandRadius: (deltaM: number) => void;
   onLoadMore: () => void;
-  inBelgium?: boolean;
+  bePanelVisible?: boolean;
 }
 
 export function ResultsList({
@@ -36,7 +36,7 @@ export function ResultsList({
   onRetry,
   onExpandRadius,
   onLoadMore,
-  inBelgium,
+  bePanelVisible,
 }: ResultsListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -95,8 +95,8 @@ export function ResultsList({
     return (
       <div className="results-state empty">
         <p>
-          {inBelgium
-            ? "Vous êtes en Belgique. Les prix maximum officiels sont affichés ci-dessus. Aucune station française dans ce rayon."
+          {bePanelVisible
+            ? "Vous êtes en zone belge. Le prix maximum officiel (moins cher qu'ici) est affiché ci-dessus. Aucune station française dans ce rayon."
             : "Aucune station trouvée dans ce rayon."}
         </p>
         <button className="btn-expand" onClick={() => onExpandRadius(5000)}>

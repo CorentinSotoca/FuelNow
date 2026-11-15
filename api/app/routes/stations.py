@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db import get_session
 from app.limiter import limiter
-from app.models import FUEL_TYPES
+from app.models import SEARCH_FUEL_TYPES
 from app.schemas import StationDetailResponse, StationPriceDetail, StationSearchItem, StationSearchResponse
 from app import services
 
@@ -22,7 +22,7 @@ async def search_stations(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
     radius_m: int = Query(5000, ge=500, le=settings.search_radius_max_m),
-    fuel: str = Query(..., pattern="^(" + "|".join(FUEL_TYPES) + ")$"),
+    fuel: str = Query(..., pattern="^(" + "|".join(SEARCH_FUEL_TYPES) + ")$"),
     include_unpriced: bool = Query(False),
     include_outage: bool = Query(False),
     sort: Literal["price", "distance"] = Query("price"),
@@ -59,6 +59,7 @@ async def search_stations(
         total=data["total"],
         page=data["page"],
         page_size=data["page_size"],
+        min_price_eur=data["min_price_eur"],
         data_updated_at=data["data_updated_at"],
         stale=data["stale"],
     )

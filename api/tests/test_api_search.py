@@ -86,6 +86,7 @@ async def test_search_default_excludes_unpriced_and_outage(client, seeded_db):
     ids = [i["id"] for i in data["items"]]
     assert ids == [900000003, 900000002, 900000001]
     assert data["total"] == 3
+    assert data["min_price_eur"] == 1.200
 
 
 BRAND_STATION_ID = 900000006
@@ -141,6 +142,70 @@ async def test_search_returns_station_brand(client, seeded_db):
             await session.execute(
                 text("DELETE FROM stations WHERE id = :sid"),
                 {"sid": BRAND_STATION_ID},
+            )
+            await session.commit()
+
+
+async def test_search_merged_sp95_e10_cheapest_per_station(client, seeded_db):
+    async with async_session() as session:
+        # 900000001 vend les deux → moins cher des deux (e10 1.850)
+        # 900000002 ne vend que du sp95 ; 900000003 que du e10
+        # 900000004 : sp95 en rupture mais e10 dispo → inclus avec l'e10
+        # 900000005 vend les deux
+        rows = [
+            (900000001, "sp95", 1.900, "none"),
+            (900000001, "e10", 1.850, "none"),
+            (900000002, "sp95", 1.800, "none"),
+            (900000003, "e10", 1.750, "none"),
+            (900000004, "sp95", 1.600, "temporary"),
+            (900000004, "e10", 1.650, "none"),
+            (900000005, "sp95", 2.000, "none"),
+            (900000005, "e10", 1.950, "none"),
+        ]
+        for sid, f, price, outage in rows:
+            await session.execute(
+                text(
+                    "INSERT INTO station_prices (station_id, fuel, price_eur, price_maj, outage) "
+                    "VALUES (:sid, :fuel, :price, now(), :outage) "
+                    "ON CONFLICT (station_id, fuel) DO NOTHING"
+                ),
+                {"sid": sid, "fuel": f, "price": price, "outage": outage},
+            )
+        await session.commit()
+
+    try:
+        resp = await client.get(
+            "/api/stations/search",
+            params={"lat": 0.0, "lon": 0.0, "radius_m": 1000, "fuel": "sp95-e10"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        items = [(i["id"], i["price_eur"]) for i in data["items"]]
+        assert items == [
+            (900000004, 1.650),  # e10 dispo retenue malgré le sp95 en rupture
+            (900000003, 1.750),
+            (900000002, 1.800),
+            (900000001, 1.850),  # moins cher des deux lignes de la station
+            (900000005, 1.950),
+        ]
+        assert data["total"] == 5
+        assert data["min_price_eur"] == 1.650
+
+        # Un carburant isolé reste utilisable et inchangé
+        resp95 = await client.get(
+            "/api/stations/search",
+            params={"lat": 0.0, "lon": 0.0, "radius_m": 1000, "fuel": "sp95"},
+        )
+        ids95 = [i["id"] for i in resp95.json()["items"]]
+        assert ids95 == [900000002, 900000001, 900000005]
+        assert resp95.json()["min_price_eur"] == 1.800
+    finally:
+        async with async_session() as session:
+            await session.execute(
+                text("DELETE FROM station_prices WHERE station_id IN :ids").bindparams(
+                    bindparam("ids", expanding=True)
+                ),
+                {"ids": TEST_STATION_IDS},
             )
             await session.commit()
 

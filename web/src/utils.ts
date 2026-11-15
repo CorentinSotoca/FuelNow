@@ -1,4 +1,4 @@
-import type { StationSearchItem } from "./types";
+import type { BeMaxPrice, BeMaxPriceResponse, FuelCode, StationSearchItem } from "./types";
 
 export interface Quartiles {
   q1: number;
@@ -134,4 +134,17 @@ export function formatBeDate(dateStr: string): string {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString("fr-BE", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+/**
+ * Prix maximum belge pertinent pour le carburant sélectionné.
+ * Pour le carburant fusionné sp95-e10 : le moins cher des deux maximums
+ * (E5 et E10) — c'est le plafond atteignable en Belgique.
+ */
+export function bePriceForFuel(bePrices: BeMaxPriceResponse | null, fuel: FuelCode): BeMaxPrice | null {
+  if (!bePrices) return null;
+  const codes: string[] = fuel === "sp95-e10" ? ["sp95", "e10"] : [fuel];
+  const rows = bePrices.prices.filter((p) => codes.includes(p.fuel_code));
+  if (rows.length === 0) return null;
+  return rows.reduce((a, b) => (b.price_eur < a.price_eur ? b : a));
 }

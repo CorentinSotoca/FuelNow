@@ -166,14 +166,14 @@ docker compose -f docker-compose.prod.yml run --rm etl python -m etl.be_run
 - **ETL** : fetch gzip JSON → validation Pydantic → dépivot 6 carburants → garde-fou (80% du dernier run) → staging tables → `TRUNCATE`+`INSERT` atomique. Un second ETL récupère les prix maximum officiels belges (Statbel) via UPSERT. Les enseignes des stations proviennent d'OpenStreetMap (Overpass, tag `ref:FR:prix-carburants`, rafraîchi hebdomadairement, match exact par id puis au plus proche POI à < 150 m).
 - **API** : `ST_DWithin` + `ST_DDistance` sur `geography` (index GiST). Rate limit 60/min/IP sur tous les endpoints (IP réelle via `X-Real-IP`), ETag + Cache-Control 900s. Engine SQLAlchemy avec `pool_pre_ping` + `pool_recycle=3600`.
 - **Frontend** : debounce 400ms, marqueurs HTML colorés par quartile de prix avec prix affiché directement sur la carte, liaison liste↔carte, popup avec enseigne, boutons Waze et Google Maps qui ciblent le POI de l'enseigne (pas un pin sur l'adresse brute). Responsive mobile : bottom sheet 3 positions, bouton géoloc.
-- **Belgique** : pas d'open data par station en Belgique. À proximité de la frontière (~20 km), un panneau affiche les prix maximum réglementés (Statbel) à côté des stations françaises frontalières (affichage hybride). La détection utilise un polygone qui suit la frontière, pas une bbox rectangulaire (pour exclure Arras, Cambrai, etc.).
+- **Belgique** : pas d'open data par station en Belgique. À proximité de la frontière (~20 km), un panneau affiche les prix maximum réglementés (Statbel) à côté des stations françaises frontalières (affichage hybride) — **uniquement si le prix maximum belge est plus bas que le meilleur prix français du rayon** (ou s'il n'y a aucune station française dans le rayon). La détection utilise un polygone qui suit la frontière, pas une bbox rectangulaire (pour exclure Arras, Cambrai, etc.).
 
 ## Endpoints API
 
 | Endpoint | Description |
 |---|---|
 | `GET /health` | Statut, dernière mise à jour ETL, `stale` (seuil 26h) |
-| `GET /api/fuels` | Liste des 6 carburants |
+| `GET /api/fuels` | Liste des carburants sélectionnables (5 : SP95 et E10 fusionnés) |
 | `GET /api/stations/search` | Recherche par rayon (`lat`, `lon`, `radius_m`, `fuel`, `sort`, pagination) |
 | `GET /api/stations/{id}` | Détail d'une station (tous carburants, services, horaires) |
 | `GET /api/be/prices` | Prix maximum officiels Belgique (filtre optionnel `fuel`) |

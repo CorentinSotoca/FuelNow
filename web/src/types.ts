@@ -1,4 +1,4 @@
-export type FuelCode = "gazole" | "sp95" | "sp98" | "e10" | "e85" | "gplc";
+export type FuelCode = "gazole" | "sp95" | "sp98" | "e10" | "e85" | "gplc" | "sp95-e10";
 
 export interface FuelInfo {
   code: FuelCode;
@@ -32,6 +32,7 @@ export interface StationSearchResponse {
   total: number;
   page: number;
   page_size: number;
+  min_price_eur: number | null;
   data_updated_at: string | null;
   stale: boolean;
 }

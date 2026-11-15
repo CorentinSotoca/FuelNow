@@ -22,6 +22,7 @@ FUEL_LABELS: dict[str, str] = {
     "e10": "E10",
     "e85": "E85",
     "gplc": "GPLc",
+    "sp95-e10": "SP95/E10",
 }
 
 
@@ -47,6 +48,7 @@ class StationSearchResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    min_price_eur: float | None = None
     data_updated_at: datetime | None
     stale: bool
 

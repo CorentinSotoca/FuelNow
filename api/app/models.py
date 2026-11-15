@@ -8,6 +8,16 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 FUEL_TYPES = ("gazole", "sp95", "sp98", "e10", "e85", "gplc")
 OUTAGE_TYPES = ("none", "temporary", "definitive")
 
+# Carburant de recherche fusionné : SP95 (E5) et SP95-E10 traités ensemble —
+# par station, on retient la ligne « achetable » (prix + pas de rupture) la
+# moins chère des deux. Le stockage reste à 6 carburants distincts.
+MERGED_FUEL = "sp95-e10"
+MERGED_FUEL_COMPONENTS = ("sp95", "e10")
+# Valeurs acceptées en paramètre `fuel` de la recherche.
+SEARCH_FUEL_TYPES = FUEL_TYPES + (MERGED_FUEL,)
+# Ce que l'UI (/api/fuels) propose : les 6 carburants, SP95 et E10 fusionnés.
+SELECTABLE_FUELS = ("gazole", MERGED_FUEL, "sp98", "e85", "gplc")
+
 
 class Base(DeclarativeBase):
     pass

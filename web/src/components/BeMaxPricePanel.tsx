@@ -1,6 +1,6 @@
 import type { BeMaxPriceResponse } from "../types";
 import type { FuelCode } from "../types";
-import { formatBeDate, formatPrice } from "../utils";
+import { bePriceForFuel, formatBeDate, formatPrice } from "../utils";
 
 interface BeMaxPricePanelProps {
   bePrices: BeMaxPriceResponse | null;
@@ -36,11 +36,13 @@ export function BeMaxPricePanel({ bePrices, loading, fuel }: BeMaxPricePanelProp
     );
   }
 
-  const selectedPrice = bePrices.prices.find((p) => p.fuel_code === fuel);
-  const priceDate = bePrices.prices[0]?.price_date;
-  const label = selectedPrice
-    ? BE_FUEL_LABELS[selectedPrice.fuel_code] ?? selectedPrice.product_label
-    : BE_FUEL_LABELS[fuel] ?? fuel;
+  const selectedPrice = bePriceForFuel(bePrices, fuel);
+  const priceDate = selectedPrice?.price_date;
+  const label = fuel === "sp95-e10"
+    ? "Essence 95 (E5/E10)"
+    : selectedPrice
+      ? BE_FUEL_LABELS[selectedPrice.fuel_code] ?? selectedPrice.product_label
+      : BE_FUEL_LABELS[fuel] ?? fuel;
 
   return (
     <div className="be-max-price-panel">
@@ -55,7 +57,7 @@ export function BeMaxPricePanel({ bePrices, loading, fuel }: BeMaxPricePanelProp
       {selectedPrice ? (
         <div className="be-panel-row be-panel-sub">
           <span className="be-panel-fuel">{label}</span>
-          <span className="be-panel-date">au {formatBeDate(priceDate)}</span>
+          <span className="be-panel-date">au {formatBeDate(priceDate ?? "")}</span>
         </div>
       ) : null}
     </div>

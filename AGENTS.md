@@ -38,7 +38,7 @@ api/                  FastAPI + ETL (même image Python)
     run.py            Orchestrateur FR + etl_runs (source='fr') + enseignes OSM
     be_run.py         Orchestrateur BE + etl_runs (source='be')
     entrypoint.sh     supercronic (-no-reap, génère crontab au runtime, 2 entries FR+BE)
-  tests/              Tests (13 ETL parse + 12 API search + 10 BE adapter + 5 BE API + 7 ETL load + 13 OSM adapter + 2 OSM load)
+  tests/              Tests (13 ETL parse + 14 API search + 10 BE adapter + 5 BE API + 7 ETL load + 13 OSM adapter + 2 OSM load)
                       conftest.py (fixtures partagées: db_session, cleanup helpers)
   alembic/            Migrations
 web/                  SPA React + Vite
@@ -94,7 +94,7 @@ cd web && npx tsc --noEmit
 | Endpoint | Description |
 |---|---|
 | `GET /health` | Statut, dernière mise à jour ETL, `stale` (seuil 26h) |
-| `GET /api/fuels` | Liste des 6 carburants |
+| `GET /api/fuels` | Carburants sélectionnables (5 : SP95 et E10 fusionnés en `sp95-e10`) |
 | `GET /api/stations/search` | Recherche par rayon (`lat`, `lon`, `radius_m`, `fuel`, `sort`, pagination) |
 | `GET /api/stations/{id}` | Détail d'une station |
 | `GET /api/be/prices` | Prix maximum officiels Belgique (filtre optionnel `fuel`) |
@@ -133,7 +133,9 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 - Pas d'historique de prix en v1.
 - Stations sans prix exclues par défaut ; ruptures temporaires et définitives exclues.
 - Remplacement complet des données à chaque run ETL, en une transaction.
-- 6 carburants : gazole, sp95, sp98, e10, e85, gplc.
+- 6 carburants en stockage : gazole, sp95, sp98, e10, e85, gplc. Sélection UI fusionnée : `sp95-e10` (5 entrées) — par station, le LATERAL de la recherche prend la ligne « achetable » (prix + pas de rupture) la **moins chère** des deux ; `count(DISTINCT s.id)` obligatoire dans le count (une station peut matcher 2 lignes).
+- La réponse search expose `min_price_eur` (vrai min du rayon, indépendant du tri/pagination) — utilisé par la comparaison du panneau BE et le peek mobile.
+- Belgique : affichage hybride — les stations FR frontalières restent visibles ; le panneau BE ne s'affiche **que si le prix max belge est plus bas que `min_price_eur`** (ou si aucune station FR dans le rayon). Pour `sp95-e10`, le prix BE retenu est le **min des maximums** E5/E10 (`bePriceForFuel()` dans utils.ts).
 - Prix bornés [0.5, 5.0] € ; geom hors bbox France rejeté (BBOX très large : -65/-25/20/55 pour inclure DROM et frontières).
 - ENUMs créés manuellement dans la migration (postgresql.ENUM avec `create_type=False`).
 - Belgique : pas d'open data par station, seuls les prix maximum réglementés (Statbel) sont affichés.
@@ -186,7 +188,7 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 - **Marqueurs HTML MapLibre** : ne **pas** mettre `transform: translate(-50%,-50%)` dans le style de l'élément — MapLibre gère lui-même le positionnement. Ne **pas** utiliser `replaceWith` pour mettre à jour un marker — appliquer les styles in-place sur `marker.getElement()` via `applyStationElStyle`.
 - **TypeScript** : `erasableSyntaxOnly: false` dans `tsconfig.app.json` (bloque les classes avec param properties comme ApiError).
 - Classes CSS popup en maplibre-gl v6 : préfixées `maplibregl-` (pas `maplibre-`).
-- **Zone belge** : `isNearBelgium(lat, lon)` dans `utils.ts` utilise un polygone (algorithme du ray-casting) qui suit la frontière franco-belge + ~20 km de tampon côté français. Une bbox rectangulaire ne fonctionne pas car elle inclurait des villes françaises éloignées de la frontière (Arras, Cambrai, Béthune, Lens, Douai). Le polygone exclut ces villes tout en incluant Lille, Valenciennes, Maubeuge, Dunkerque, Hirson, Givet. Quand `isNearBelgium` est vrai, le hook `useDebouncedSearch` fetch les prix BE via `GET /api/be/prices` et `BeMaxPricePanel` s'affiche en haut des résultats. Les stations FR frontalières restent visibles (affichage hybride).
+- **Zone belge** : `isNearBelgium(lat, lon)` dans `utils.ts` utilise un polygone (algorithme du ray-casting) qui suit la frontière franco-belge + ~20 km de tampon côté français. Une bbox rectangulaire ne fonctionne pas car elle inclurait des villes françaises éloignées de la frontière (Arras, Cambrai, Béthune, Lens, Douai). Le polygone exclut ces villes tout en incluant Lille, Valenciennes, Maubeuge, Dunkerque, Hirson, Givet. Quand `isNearBelgium` est vrai, le hook `useDebouncedSearch` fetch les prix BE via `GET /api/be/prices`. Le panneau `BeMaxPricePanel` ne s'affiche en haut des résultats **que si le prix max belge est plus bas que le min français du rayon** (`showBePanel` dans App.tsx, basé sur `data.min_price_eur`) — ou s'il n'y a aucune station française (le prix belge est alors la seule info). Les stations FR frontalières restent visibles (affichage hybride).
 - **CSP & MapLibre** : la CSP a été retirée de `nginx.conf` car elle bloquait les tuiles OSM. MapLibre v6 charge les tuiles via `fetch()` (donc `connect-src`, pas `img-src`), crée des blob URLs pour les images (`img-src blob:`) et précharge le worker via blob (`worker-src blob:`). De plus, `https://*.tile.openstreetmap.org` ne matche pas `https://tile.openstreetmap.org` (le wildcard `*.` exige un sous-domaine). Si la CSP est réimplémentée, il faut : `connect-src 'self' https://tile.openstreetmap.org https://*.tile.openstreetmap.org ; img-src 'self' https://tile.openstreetmap.org https://*.tile.openstreetmap.org data: blob: ; worker-src 'self' blob:`.
 - **Permissions-Policy geolocation** : le nginx hôte (squale.ovh) bloquait la géoloc via `geolocation=()` dans le snippet partagé `/etc/nginx/snippets/security-headers.conf` — corrigé en `geolocation=(self)` le 2026-11-15. La géoloc nécessite toujours HTTPS (déjà le cas).
 

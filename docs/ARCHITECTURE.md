@@ -156,7 +156,7 @@ Réponse (par item) : `id, name/address, city, postal_code, road_type, lat, lon,
 Enveloppe : `{ items, total, page, page_size, data_updated_at, stale }`.
 
 ### Autres endpoints
-- `GET /api/fuels` → liste des carburants + libellés (alimente le select).
+- `GET /api/fuels` → liste des carburants sélectionnables + libellés (5 : SP95 et E10 fusionnés en `sp95-e10`, le moins cher des deux par station).
 - `GET /api/stations/{id}` → détail station (tous carburants, services, horaires bruts).
 - `GET /health` → `{status, last_success_at, age_hours, stale}`.
 - `GET /.well-known/mcp-server` → manifest de découverte MCP (endpoint, transport, capabilities).
@@ -281,7 +281,7 @@ VPS cible : **2 vCPU / 2 Go RAM / 20 Go SSD** suffisent largement (Postgres ~512
 2. Le pull unique à 06:00 (heure Paris) est suffisant ; pas de besoin temps réel intra-journalier.
 3. Aucun compte utilisateur, aucune donnée personnelle stockée (pas de contrainte RGPD au-delà des logs IP, purgés à 7 j).
 4. Périmètre France métropolitaine + DOM tel que fourni par la source, pas de filtrage géographique métier.
-5. 6 carburants figés (gazole, sp95, sp98, e10, e85, gplc) ; un nouveau carburant nécessite une migration d'ENUM.
+5. 6 carburants figés en stockage (gazole, sp95, sp98, e10, e85, gplc) ; un nouveau carburant nécessite une migration d'ENUM. La fusion `sp95-e10` est une vue de recherche uniquement (LATERAL « moins chère des deux »), sans impact stockage.
 6. Ruptures temporaires **et** définitives exclues par défaut des résultats ; horaires et services stockés bruts mais non exploités en v1.
 7. Un seul VPS, pas de HA, downtime de déploiement acceptable.
 8. L'utilisateur gère domaine, DNS et déploiement ; le reverse proxy externe (géré hors Docker Compose) assure TLS, un nginx existant peut le remplacer.

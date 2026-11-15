@@ -4,19 +4,20 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import MERGED_FUEL, MERGED_FUEL_COMPONENTS, SEARCH_FUEL_TYPES, SELECTABLE_FUELS
 from app.schemas import FUEL_LABELS
 from app.status import get_last_success
 
-_COUNT_SQL = """
+_COUNT_SQL_TEMPLATE = """
     WITH filtered AS (
-        SELECT sp.price_eur
+        SELECT s.id, p.price_eur
         FROM stations s
-        LEFT JOIN station_prices sp ON sp.station_id = s.id AND sp.fuel = :fuel
+        LEFT JOIN station_prices p ON p.station_id = s.id AND {fuel_pred}
         WHERE ST_DWithin(s.geom, ST_MakePoint(:lon, :lat)::geography, :radius_m)
-          AND (:include_unpriced OR sp.price_eur IS NOT NULL)
-          AND (:include_outage OR COALESCE(sp.outage, 'none') = 'none')
+          AND (:include_unpriced OR p.price_eur IS NOT NULL)
+          AND (:include_outage OR COALESCE(p.outage, 'none') = 'none')
     )
-    SELECT count(*) AS total, min(price_eur) AS min_price FROM filtered
+    SELECT count(DISTINCT id) AS total, min(price_eur) AS min_price FROM filtered
 """
 
 _SEARCH_SQL_TEMPLATE = """
@@ -36,7 +37,13 @@ _SEARCH_SQL_TEMPLATE = """
             sb.brand,
             sb.osm_name
         FROM stations s
-        LEFT JOIN station_prices sp ON sp.station_id = s.id AND sp.fuel = :fuel
+        LEFT JOIN LATERAL (
+            SELECT p.price_eur, p.price_maj, p.outage
+            FROM station_prices p
+            WHERE p.station_id = s.id AND {fuel_pred}
+            ORDER BY (p.price_eur IS NULL OR p.outage <> 'none'), p.price_eur ASC NULLS LAST
+            LIMIT 1
+        ) sp ON true
         LEFT JOIN station_brands sb ON sb.station_id = s.id
         WHERE ST_DWithin(s.geom, ST_MakePoint(:lon, :lat)::geography, :radius_m)
           AND (:include_unpriced OR sp.price_eur IS NOT NULL)
@@ -50,6 +57,18 @@ _SEARCH_SQL_TEMPLATE = """
 
 _ORDER_BY_PRICE = "price_eur ASC NULLS LAST, distance_m ASC"
 _ORDER_BY_DISTANCE = "distance_m ASC, price_eur ASC NULLS LAST"
+
+
+def _fuel_predicate(fuel: str) -> str:
+    """Prédicat SQL sur p.fuel, depuis une valeur déjà validée (Literal/route).
+
+    Carburant fusionné sp95-e10 : les deux lignes de la station sont
+    candidates, le LATERAL/tri retient la moins chère disponible.
+    """
+    if fuel == MERGED_FUEL:
+        components = "', '".join(MERGED_FUEL_COMPONENTS)
+        return f"p.fuel IN ('{components}')"
+    return "p.fuel = :fuel"
 
 
 async def search_stations(
@@ -66,10 +85,13 @@ async def search_stations(
 ) -> dict[str, Any]:
     offset = (page - 1) * page_size
     order_by = _ORDER_BY_DISTANCE if sort == "distance" else _ORDER_BY_PRICE
-    search_sql = text(_SEARCH_SQL_TEMPLATE.format(order_by=order_by))
+    if fuel not in SEARCH_FUEL_TYPES:
+        raise ValueError(f"carburant inconnu: {fuel}")
+    fuel_pred = _fuel_predicate(fuel)
+    search_sql = text(_SEARCH_SQL_TEMPLATE.format(fuel_pred=fuel_pred, order_by=order_by))
 
     count_result = await session.execute(
-        text(_COUNT_SQL),
+        text(_COUNT_SQL_TEMPLATE.format(fuel_pred=fuel_pred)),
         {
             "lat": lat,
             "lon": lon,
@@ -129,6 +151,7 @@ async def search_stations(
         "total": total,
         "page": page,
         "page_size": page_size,
+        "min_price_eur": float(min_price) if min_price is not None else None,
         "data_updated_at": data_updated_at,
         "stale": stale,
     }
@@ -186,9 +209,9 @@ async def get_station_detail(session: AsyncSession, station_id: int) -> dict[str
 
 
 def list_fuels() -> list[dict[str, str]]:
-    from app.models import FUEL_TYPES
+    from app.models import SELECTABLE_FUELS
 
-    return [{"code": f, "label": FUEL_LABELS[f]} for f in FUEL_TYPES]
+    return [{"code": f, "label": FUEL_LABELS[f]} for f in SELECTABLE_FUELS]
 
 
 async def get_be_prices(session: AsyncSession, fuel: str | None = None) -> dict[str, Any]:
