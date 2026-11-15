@@ -89,5 +89,7 @@ async def get_station(
         lon=data["lon"],
         services=data["services"],
         opening_hours=data["opening_hours"],
+        brand=data["brand"],
+        osm_name=data["osm_name"],
         prices=prices,
     )

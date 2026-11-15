@@ -192,6 +192,8 @@ Voir `.env.example`. Les critiques : `POSTGRES_PASSWORD`, `DATABASE_URL` (obliga
 
 ### Supercronic (ETL)
 
+0. **DNS web→api** : le nginx du conteneur `web` résout l'IP du service `api` **au démarrage**. Si le conteneur api est recréé sans que le web le soit (rebuild partiel → `up -d api` seul), le web garde l'ancienne IP → **502**. Fix : `docker compose -f docker-compose.prod.yml restart web`. Un déploiement complet via `deploy.sh` recrée les deux, pas de souci.
+
 1. Format crontab = **5 champs standard** (min hour dom month dow). supercronic v0.2.33 supporte nativement ce format. Ne **pas** préfixer avec des secondes — le format 6 champs de supercronic est `min hour dom month dow sec` (secondes suffixées), pas `sec min hour dom month dow`. Préfixer "0 " décale tous les champs et transforme `0 6 * * *` (06h00 quotidien) en `0 0 6 * * *` (le 6 du mois à minuit).
 2. supercronic en PID 1 crash sur "Failed to fork exec" → flag **`-no-reap`**.
 3. Pas de substitution de variables d'env dans le crontab → `entrypoint.sh` génère le fichier au runtime.
