@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgis/postgis:16-3.4
+    image: postgis/postgis:16-3.7
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-fuelnow}
       POSTGRES_USER: ${POSTGRES_USER:-fuelnow}
